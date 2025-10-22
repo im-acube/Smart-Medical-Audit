@@ -8,22 +8,22 @@ import numpy as np
 import plotly.express as px
 import time
 
-# ---------- PAGE CONFIG ----------
-st.set_page_config(page_title="Smart Medical Audit Dashboard", page_icon="💊", layout="wide")
+# ---------------------- PAGE CONFIG ----------------------
+st.set_page_config(page_title="Smart Medical Audit", page_icon="💊", layout="wide")
 
-# ---------- SIDEBAR ----------
+# ---------------------- SIDEBAR ----------------------
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/a/ac/Hospital_Cross.png", width=80)
 st.sidebar.markdown("<h2 style='color:#2563EB;'>Smart Medical Audit</h2>", unsafe_allow_html=True)
-st.sidebar.write("Audit hospital bills using AI + OCR")
+st.sidebar.write("AI-assisted billing and compliance checker")
 st.sidebar.markdown("---")
-st.sidebar.info("Upload a patient’s bill (Excel / PDF / Image) to begin auditing.")
+st.sidebar.info("Upload patient bills (Excel, PDF, or Image) and generate automated audit reports.")
 
-# ---------- OCR SETUP ----------
+# ---------------------- OCR READER ----------------------
 reader = easyocr.Reader(['en'], gpu=False)
 
-# ---------- HELPER FUNCTIONS ----------
+# ---------------------- HELPER FUNCTIONS ----------------------
 def load_reference_data():
-    """Load CGHS and insurer reference datasets."""
+    """Load CGHS and insurer exclusion datasets."""
     try:
         cghs = pd.read_csv("cghs_rates.csv")
         excl = pd.read_csv("insurer_exclusions.csv")
@@ -32,7 +32,6 @@ def load_reference_data():
         return pd.DataFrame(), pd.DataFrame()
 
 def read_excel_or_csv(file):
-    """Read Excel or CSV bills."""
     try:
         if file.name.endswith(".csv"):
             df = pd.read_csv(file)
@@ -44,7 +43,6 @@ def read_excel_or_csv(file):
         return pd.DataFrame()
 
 def read_pdf(file):
-    """Extract text lines from PDF using pdfplumber."""
     data = []
     try:
         with pdfplumber.open(file) as pdf:
@@ -59,7 +57,6 @@ def read_pdf(file):
         return pd.DataFrame()
 
 def read_image(file):
-    """Perform OCR extraction from uploaded image."""
     try:
         img = Image.open(file).convert('RGB')
         img_np = np.array(img)
@@ -74,7 +71,7 @@ def read_image(file):
         return pd.DataFrame()
 
 def audit_bills(df, cghs, exclusions):
-    """Flag overcharges and excluded services."""
+    """Flag overcharges and exclusions"""
     if df.empty or cghs.empty:
         return df, [], 0
 
@@ -101,37 +98,56 @@ def audit_bills(df, cghs, exclusions):
     audit_score = max(0, 100 - (overcharge_count * 10))
     return df, alerts, audit_score
 
-def show_summary(patient_name, hospital_name, audit_score, total_bill):
-    """Display top KPIs."""
-    st.markdown("### 🏥 Patient & Hospital Summary")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Patient", patient_name)
-    c2.metric("Hospital", hospital_name)
-    c3.metric("Total Bill (₹)", f"{total_bill:,.2f}")
-    c4.metric("Audit Score", f"{audit_score} / 100")
+def show_summary(patient, hospital, insurer, policy, claim, audit_score, total_bill):
+    """Show key metrics"""
+    st.markdown("### 🏥 Patient & Insurance Summary")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Patient Name", patient)
+    c2.metric("Hospital", hospital)
+    c3.metric("Insurance Provider", insurer)
+
+    c4, c5, c6 = st.columns(3)
+    c4.metric("Policy No.", policy)
+    c5.metric("Claim ID", claim)
+    c6.metric("Audit Score", f"{audit_score}/100")
+
+    st.progress(audit_score / 100)
+    st.caption(f"Total Billed Amount: ₹{total_bill:,.2f}")
 
 def show_visuals(df):
-    """Show visualization of billed vs. allowed services."""
+    """Show bar chart"""
     if "Service" in df.columns and "Amount" in df.columns:
-        fig = px.bar(df, x="Service", y="Amount", color="Audit_Flag",
-                     color_discrete_map={"Overcharged": "#F87171", "Excluded": "#FBBF24", "": "#60A5FA"},
-                     title="Billing Overview by Service")
+        fig = px.bar(
+            df, x="Service", y="Amount", color="Audit_Flag",
+            color_discrete_map={"Overcharged": "#EF4444", "Excluded": "#FACC15", "": "#60A5FA"},
+            title="Service-wise Billing Overview"
+        )
         st.plotly_chart(fig, use_container_width=True)
 
-# ---------- MAIN DASHBOARD ----------
+# ---------------------- MAIN APP ----------------------
 st.title("💊 Smart Medical Audit Dashboard")
 
-# --- Patient & Hospital Details ---
-st.markdown("### 🧾 Enter Patient & Hospital Details")
+# --- Patient Information ---
+st.markdown("### 🧾 Enter Patient & Insurance Details")
 col1, col2, col3 = st.columns(3)
 patient_name = col1.text_input("Patient Name", "John Doe")
 hospital_name = col2.text_input("Hospital Name", "CityCare Hospital")
 bill_date = col3.date_input("Bill Date")
 
-uploaded_file = st.file_uploader("📂 Upload Medical Bill (Excel, PDF, or Image)", type=["xlsx", "csv", "pdf", "png", "jpg", "jpeg"])
+col4, col5, col6 = st.columns(3)
+insurance_provider = col4.text_input("Insurance Provider", "Star Health")
+policy_number = col5.text_input("Policy Number", "POL12345")
+claim_number = col6.text_input("Claim ID", "CLM67890")
+
+st.markdown("---")
+
+# --- File Upload ---
+uploaded_file = st.file_uploader(
+    "📂 Upload Bill (Excel, PDF, or Image)", type=["xlsx", "csv", "pdf", "png", "jpg", "jpeg"]
+)
 
 if uploaded_file:
-    with st.spinner("Processing the file..."):
+    with st.spinner("Processing the uploaded bill..."):
         time.sleep(1)
         ext = uploaded_file.name.split(".")[-1].lower()
         if ext in ["xlsx", "csv"]:
@@ -141,40 +157,40 @@ if uploaded_file:
         elif ext in ["jpg", "jpeg", "png"]:
             df = read_image(uploaded_file)
         else:
-            st.error("Unsupported file format.")
+            st.error("Unsupported file type.")
             df = pd.DataFrame()
 
     if not df.empty:
         st.success("✅ File processed successfully!")
-        st.dataframe(df.head(20))
+        st.dataframe(df.head(15))
 
-        cghs, exclusions = load_reference_data()
+        # --- Audit Button ---
+        if st.button("🚀 Run Medical Audit"):
+            with st.spinner("Running AI audit..."):
+                cghs, exclusions = load_reference_data()
+                audited_df, alerts, audit_score = audit_bills(df, cghs, exclusions)
+                total_bill = audited_df["Amount"].sum() if "Amount" in audited_df.columns else 0
+                time.sleep(2)
 
-        if "Service" in df.columns and "Amount" in df.columns:
-            audited_df, alerts, audit_score = audit_bills(df, cghs, exclusions)
+                show_summary(patient_name, hospital_name, insurance_provider, policy_number, claim_number, audit_score, total_bill)
 
-            total_bill = audited_df["Amount"].sum()
-            show_summary(patient_name, hospital_name, audit_score, total_bill)
+                st.markdown("### 🧾 Detailed Audit Report")
+                st.dataframe(audited_df)
 
-            st.markdown("### 🔍 Detailed Audit Report")
-            st.dataframe(audited_df)
+                if alerts:
+                    st.warning("⚠️ Audit Alerts & Observations")
+                    for alert in alerts:
+                        st.write(alert)
+                else:
+                    st.success("✅ No irregularities detected in this bill.")
 
-            if alerts:
-                st.warning("⚠️ Alerts and Observations")
-                for alert in alerts:
-                    st.write(alert)
-            else:
-                st.info("✅ No irregularities detected. Bill appears compliant.")
-
-            show_visuals(audited_df)
-        else:
-            st.info("OCR extraction complete. Please structure text manually for audit.")
+                show_visuals(audited_df)
 else:
-    st.info("Please upload a bill to start the audit.")
+    st.info("Please upload a file to start audit.")
 
-# ---------- FOOTER ----------
+# ---------------------- FOOTER ----------------------
 st.markdown("""
 ---
 **Smart Medical Audit © 2025**  
-Empowering transparency in healthcare billing.
+Empowering transparency and accountability in medical billing.
 """)
