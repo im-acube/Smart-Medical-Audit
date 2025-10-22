@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 import re
-from PIL import Image
-import pytesseract
 import pdfplumber
 import altair as alt
 import plotly.express as px
+from PIL import Image
+import easyocr
 
 # ------------------------------
 # PAGE CONFIG
@@ -18,46 +18,33 @@ st.set_page_config(
 )
 
 # ------------------------------
-# CUSTOM CSS FOR COLORFUL UI
+# CUSTOM CSS
 # ------------------------------
 st.markdown("""
 <style>
-body {
-    background-color: #f5f5f5;
-    font-family: 'Arial', sans-serif;
-}
-h1, h2, h3 {
-    color: #4B8BBE;
-}
-.stButton>button {
-    background-color: #4B8BBE;
-    color: white;
-    border-radius: 8px;
-    font-weight: bold;
-}
-.stMetric-value {
-    font-weight: bold;
-    color: #2E8B57;
-}
+body {background-color: #f5f5f5; font-family: 'Arial', sans-serif;}
+h1, h2, h3 {color: #4B8BBE;}
+.stButton>button {background-color: #4B8BBE; color: white; border-radius: 8px; font-weight: bold;}
+.stMetric-value {font-weight: bold; color: #2E8B57;}
 </style>
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# SIDEBAR: Patient & Policy Info
+# SIDEBAR
 # ------------------------------
 st.sidebar.image("logo.png", width=120)
 st.sidebar.title("👤 Patient & Policy Info")
 patient_name = st.sidebar.text_input("Patient Name")
-patient_age = st.sidebar.number_input("Age", min_value=0, max_value=120, value=30)
+patient_age = st.sidebar.number_input("Age", 0, 120, 30)
 hospital_name = st.sidebar.text_input("Hospital Name")
 insurance_provider = st.sidebar.selectbox(
     "Medical Insurance Provider",
     ["Select", "HDFC ERGO", "ICICI Lombard", "Star Health", "Care Health", "New India Assurance", "Other"]
 )
 policy_number = st.sidebar.text_input("Policy Number")
-claim_amount = st.sidebar.number_input("Claimed Amount (₹)", min_value=0, step=1000)
+claim_amount = st.sidebar.number_input("Claimed Amount (₹)", 0, step=1000)
 st.sidebar.markdown("---")
-st.sidebar.info("Enter patient & policy details. These appear in audit summary.")
+st.sidebar.info("Enter patient & policy details for audit summary.")
 
 # ------------------------------
 # HEADER
@@ -71,27 +58,13 @@ st.markdown("---")
 # ------------------------------
 st.header("Step 1: Upload Medical Bill")
 uploaded_file = st.file_uploader(
-    "Upload your medical bill (Excel, CSV, Image, PDF)", 
-    type=["csv", "xlsx", "png", "jpg", "jpeg", "pdf"]
+    "Upload your medical bill (Excel, CSV, PDF, Image)", 
+    type=["csv", "xlsx", "pdf", "png", "jpg", "jpeg"]
 )
 
 # ------------------------------
 # FILE TO DATAFRAME FUNCTIONS
 # ------------------------------
-def image_to_dataframe(image_file):
-    img = Image.open(image_file)
-    text = pytesseract.image_to_string(img)
-    lines = [line for line in text.split("\n") if line.strip() != ""]
-    data = []
-    for line in lines:
-        parts = line.split()
-        if len(parts) >= 2:
-            item = " ".join(parts[:-1])
-            amount = parts[-1].replace("₹","").replace(",","")
-            if amount.replace(".","").isdigit():
-                data.append([item, float(amount)])
-    return pd.DataFrame(data, columns=["Item","Amount (₹)"])
-
 def pdf_to_dataframe(pdf_file):
     data = []
     with pdfplumber.open(pdf_file) as pdf:
@@ -106,6 +79,20 @@ def pdf_to_dataframe(pdf_file):
                         data.append([item, float(amount)])
     return pd.DataFrame(data, columns=["Item","Amount (₹)"])
 
+def image_to_dataframe(image_file):
+    reader = easyocr.Reader(['en'])
+    img = Image.open(image_file)
+    result = reader.readtext(img)
+    data = []
+    for bbox, text, prob in result:
+        parts = text.split()
+        if len(parts) >= 2:
+            item = " ".join(parts[:-1])
+            amount = parts[-1].replace("₹","").replace(",","")
+            if amount.replace(".","").isdigit():
+                data.append([item, float(amount)])
+    return pd.DataFrame(data, columns=["Item","Amount (₹)"])
+
 # ------------------------------
 # LOAD DATA
 # ------------------------------
@@ -115,12 +102,14 @@ if uploaded_file:
             df = pd.read_csv(uploaded_file)
         else:
             df = pd.read_excel(uploaded_file)
-    elif uploaded_file.name.endswith((".png", ".jpg", ".jpeg")):
-        df = image_to_dataframe(uploaded_file)
     elif uploaded_file.name.endswith(".pdf"):
         df = pdf_to_dataframe(uploaded_file)
+    elif uploaded_file.name.lower().endswith((".png", ".jpg", ".jpeg")):
+        df = image_to_dataframe(uploaded_file)
+
     st.success("✅ File uploaded successfully!")
     st.dataframe(df)
+
 else:
     st.info("No file uploaded. Click below to load sample bill for demo.")
     if st.button("📄 Load Sample Bill"):
@@ -130,9 +119,6 @@ else:
         }
         df = pd.DataFrame(sample_data)
         st.dataframe(df)
-
-st.markdown("---")
-st.header("Step 2: Run Audit")
 
 # ------------------------------
 # AUDIT FUNCTION
@@ -173,20 +159,14 @@ if st.button("🔍 Run Audit"):
     else:
         alerts, total = audit_medical_bill(df, claim_amount)
 
-        # --------------------------
         # METRICS CARDS
-        # --------------------------
         col1, col2, col3 = st.columns(3)
         col1.metric("Total Bill Amount (₹)", f"{total:,}")
         col2.metric("Claimed Amount (₹)", f"{claim_amount:,}")
         col3.metric("Alerts Found", len(alerts))
 
-        # --------------------------
         # BILL COMPOSITION CHARTS
-        # --------------------------
         st.subheader("Bill Composition")
-
-        # Altair Bar Chart
         chart = alt.Chart(df).mark_bar().encode(
             x='Item',
             y='Amount (₹)',
@@ -195,15 +175,12 @@ if st.button("🔍 Run Audit"):
         )
         st.altair_chart(chart, use_container_width=True)
 
-        # Optional Plotly Pie Chart
-        fig = px.pie(df, names='Item', values='Amount (₹)', 
+        fig = px.pie(df, names='Item', values='Amount (₹)',
                      color_discrete_sequence=px.colors.qualitative.Set2,
                      title='Cost Distribution')
         st.plotly_chart(fig, use_container_width=True)
 
-        # --------------------------
         # ALERTS
-        # --------------------------
         st.subheader("Audit Findings")
         if alerts:
             for title, msg in alerts:
@@ -218,4 +195,4 @@ if st.button("🔍 Run Audit"):
             st.success("✅ No anomalies detected! Bill within norms.")
 
 st.markdown("---")
-st.caption("Prototype for Medical Bill Auditing – by Aqib Ahmed.")
+st.caption("Prototype for Medical Bill Auditing –by Aqib Ahmed.")
