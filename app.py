@@ -11,45 +11,33 @@ import plotly.express as px
 st.set_page_config(page_title="Smart Medical Audit", page_icon="💊", layout="wide")
 
 # ---------- SIDEBAR ----------
-st.sidebar.markdown("<h1 style='color:#3B82F6;'>💊 Smart Medical Audit</h1>", unsafe_allow_html=True)
-
-# Try loading logo
-try:
-    st.sidebar.image("logo.png", width=120)
-except:
-    st.sidebar.info("Upload logo.png for sidebar branding")
-
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/a/ac/Hospital_Cross.png", width=100)
+st.sidebar.markdown("<h2 style='color:#2563EB;'>Smart Medical Audit</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("""
-**Features:**
-- Upload Excel, PDF, or Image bills  
-- Detect overcharges automatically  
-- OCR for image-based bills  
-- Works with insurance exclusions  
+Analyze, verify, and visualize medical bills.  
+Supports Excel, PDFs, and Image uploads.
 """)
-
 st.sidebar.markdown("---")
-st.sidebar.caption("Developed for case competition • 2025")
+st.sidebar.markdown("**Powered by Streamlit • OCR + Audit Engine**")
 
-# ---------- FILE UPLOAD ----------
-st.title("🧾 Medical Bill Audit Prototype")
-uploaded_file = st.file_uploader("Upload your medical bill (Excel, PDF, or Image)", type=["xlsx", "csv", "pdf", "png", "jpg", "jpeg"])
-
-# ---------- OCR Setup ----------
+# ---------- OCR SETUP ----------
 reader = easyocr.Reader(['en'], gpu=False)
 
-# ---------- UTILITY FUNCTIONS ----------
+# ---------- HELPER FUNCTIONS ----------
 
 def load_reference_data():
+    """Load CGHS and insurance reference data."""
     try:
         cghs = pd.read_csv("cghs_rates.csv")
         excl = pd.read_csv("insurer_exclusions.csv")
         return cghs, excl
     except:
-        st.error("Missing reference files: cghs_rates.csv or insurer_exclusions.csv")
+        st.warning("⚠️ Reference files missing — skipping audit comparison.")
         return pd.DataFrame(), pd.DataFrame()
 
 
-def excel_to_dataframe(file):
+def read_excel_or_csv(file):
+    """Handle Excel/CSV upload."""
     try:
         if file.name.endswith(".csv"):
             df = pd.read_csv(file)
@@ -57,11 +45,12 @@ def excel_to_dataframe(file):
             df = pd.read_excel(file)
         return df
     except Exception as e:
-        st.error(f"Error reading Excel: {e}")
+        st.error(f"Error reading file: {e}")
         return pd.DataFrame()
 
 
-def pdf_to_dataframe(file):
+def read_pdf(file):
+    """Extract text lines from a PDF."""
     data = []
     try:
         with pdfplumber.open(file) as pdf:
@@ -76,13 +65,13 @@ def pdf_to_dataframe(file):
         return pd.DataFrame()
 
 
-def image_to_dataframe(uploaded_file):
+def read_image(file):
+    """Run OCR on an uploaded image."""
     try:
-        img = Image.open(uploaded_file).convert('RGB')
+        img = Image.open(file).convert('RGB')
         img_array = np.array(img)
         img_cv = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
         result = reader.readtext(img_cv)
-
         data = []
         for (bbox, text, prob) in result:
             data.append({"Detected Text": text, "Confidence": round(prob, 2)})
@@ -92,49 +81,79 @@ def image_to_dataframe(uploaded_file):
         return pd.DataFrame()
 
 
-def highlight_overcharge(row, cghs):
-    if "Service" in row and "Amount" in row:
-        ref = cghs[cghs["Service"] == row["Service"]]
-        if not ref.empty and row["Amount"] > ref["Rate"].values[0]:
-            return "background-color: #FECACA"
-    return ""
+def audit_bills(df, cghs, exclusions):
+    """Detect overcharges and exclusions."""
+    if df.empty or cghs.empty:
+        return df, []
 
-# ---------- MAIN LOGIC ----------
+    alerts = []
+    df["Audit_Flag"] = ""
+
+    for i, row in df.iterrows():
+        service = str(row.get("Service", "")).strip()
+        amount = float(row.get("Amount", 0))
+        
+        ref = cghs[cghs["Service"].str.lower() == service.lower()]
+        if not ref.empty:
+            allowed = float(ref["Rate"].values[0])
+            if amount > allowed:
+                df.at[i, "Audit_Flag"] = "Overcharged"
+                alerts.append(f"💰 {service} billed ₹{amount} vs CGHS ₹{allowed}")
+        if not exclusions.empty and service.lower() in exclusions["Excluded_Service"].str.lower().values:
+            df.at[i, "Audit_Flag"] = "Excluded"
+            alerts.append(f"🚫 {service} is excluded by insurer")
+    return df, alerts
+
+
+def show_charts(df):
+    """Visual analytics dashboard."""
+    if "Amount" in df.columns:
+        st.subheader("📊 Billing Summary")
+        fig = px.bar(df, x="Service", y="Amount", color="Audit_Flag",
+                     color_discrete_map={"Overcharged": "#F87171", "Excluded": "#FBBF24", "": "#60A5FA"})
+        st.plotly_chart(fig, use_container_width=True)
+
+# ---------- MAIN ----------
+st.title("💊 Smart Medical Bill Auditor")
+uploaded_file = st.file_uploader("Upload your bill (Excel, PDF, or Image)", type=["xlsx", "csv", "pdf", "png", "jpg", "jpeg"])
+
 if uploaded_file:
-    file_type = uploaded_file.name.split('.')[-1].lower()
-
-    if file_type in ["xlsx", "csv"]:
-        df = excel_to_dataframe(uploaded_file)
-    elif file_type == "pdf":
-        df = pdf_to_dataframe(uploaded_file)
-    elif file_type in ["jpg", "jpeg", "png"]:
-        df = image_to_dataframe(uploaded_file)
+    ext = uploaded_file.name.split(".")[-1].lower()
+    if ext in ["xlsx", "csv"]:
+        df = read_excel_or_csv(uploaded_file)
+    elif ext == "pdf":
+        df = read_pdf(uploaded_file)
+    elif ext in ["jpg", "jpeg", "png"]:
+        df = read_image(uploaded_file)
     else:
         st.error("Unsupported file format.")
         df = pd.DataFrame()
 
     if not df.empty:
-        st.success(f"✅ Successfully processed your {file_type.upper()} file!")
+        st.success("✅ File successfully processed!")
         st.dataframe(df.head(20))
 
         cghs, exclusions = load_reference_data()
 
-        if not cghs.empty and "Service" in df.columns and "Amount" in df.columns:
-            styled = df.style.apply(lambda x: highlight_overcharge(x, cghs), axis=1)
+        if "Service" in df.columns and "Amount" in df.columns:
+            audited_df, alerts = audit_bills(df, cghs, exclusions)
             st.subheader("🔍 Audit Results")
-            st.dataframe(styled)
+            st.dataframe(audited_df)
 
-            # Visualization
-            if "Amount" in df.columns:
-                fig = px.bar(df, x=df.index, y="Amount", title="Billing Overview", color_discrete_sequence=["#3B82F6"])
-                st.plotly_chart(fig, use_container_width=True)
+            if alerts:
+                st.warning("⚠️ Audit Alerts:")
+                for a in alerts:
+                    st.write(a)
 
+            show_charts(audited_df)
+        else:
+            st.info("📋 Detected text will need manual structuring for audit (OCR mode).")
 else:
-    st.info("Please upload a medical bill to start auditing.")
+    st.info("Please upload your medical bill to start auditing.")
 
 # ---------- FOOTER ----------
 st.markdown("""
 ---
-**Smart Medical Audit © 2025**  
-Empowering patients through transparent billing.
+🌐 **Smart Medical Audit © 2025**  
+Transparency. Accuracy. Trust.
 """)
