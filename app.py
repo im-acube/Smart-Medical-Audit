@@ -2,195 +2,125 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import easyocr
-import cv2
 from PIL import Image
-import numpy as np
-import plotly.express as px
-import time
+import io
 
-# ---------------------- PAGE CONFIG ----------------------
 st.set_page_config(page_title="Smart Medical Audit", page_icon="💊", layout="wide")
 
-# ---------------------- SIDEBAR ----------------------
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/a/ac/Hospital_Cross.png", width=80)
-st.sidebar.markdown("<h2 style='color:#2563EB;'>Smart Medical Audit</h2>", unsafe_allow_html=True)
-st.sidebar.write("AI-assisted billing and compliance checker")
-st.sidebar.markdown("---")
-st.sidebar.info("Upload patient bills (Excel, PDF, or Image) and generate automated audit reports.")
-
-# ---------------------- OCR READER ----------------------
-reader = easyocr.Reader(['en'], gpu=False)
-
-# ---------------------- HELPER FUNCTIONS ----------------------
-def load_reference_data():
-    """Load CGHS and insurer exclusion datasets."""
-    try:
-        cghs = pd.read_csv("cghs_rates.csv")
-        excl = pd.read_csv("insurer_exclusions.csv")
-        return cghs, excl
-    except:
-        return pd.DataFrame(), pd.DataFrame()
-
-def read_excel_or_csv(file):
-    try:
-        if file.name.endswith(".csv"):
-            df = pd.read_csv(file)
-        else:
-            df = pd.read_excel(file)
-        return df
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
-        return pd.DataFrame()
-
-def read_pdf(file):
-    data = []
-    try:
-        with pdfplumber.open(file) as pdf:
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    for line in text.split("\n"):
-                        data.append({"Extracted Line": line})
-        return pd.DataFrame(data)
-    except Exception as e:
-        st.error(f"Error reading PDF: {e}")
-        return pd.DataFrame()
-
-def read_image(file):
-    try:
-        img = Image.open(file).convert('RGB')
-        img_np = np.array(img)
-        img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-        result = reader.readtext(img_cv)
-        data = []
-        for (bbox, text, prob) in result:
-            data.append({"Detected Text": text, "Confidence": round(prob, 2)})
-        return pd.DataFrame(data)
-    except Exception as e:
-        st.error(f"OCR Error: {e}")
-        return pd.DataFrame()
-
-def audit_bills(df, cghs, exclusions):
-    """Flag overcharges and exclusions"""
-    if df.empty or cghs.empty:
-        return df, [], 0
-
-    alerts = []
-    overcharge_count = 0
-    df["Audit_Flag"] = ""
-
-    for i, row in df.iterrows():
-        service = str(row.get("Service", "")).strip()
-        amount = float(row.get("Amount", 0))
-        ref = cghs[cghs["Service"].str.lower() == service.lower()]
-
-        if not ref.empty:
-            allowed = float(ref["Rate"].values[0])
-            if amount > allowed:
-                df.at[i, "Audit_Flag"] = "Overcharged"
-                alerts.append(f"💰 {service} billed ₹{amount} vs CGHS ₹{allowed}")
-                overcharge_count += 1
-
-        if not exclusions.empty and service.lower() in exclusions["Excluded_Service"].str.lower().values:
-            df.at[i, "Audit_Flag"] = "Excluded"
-            alerts.append(f"🚫 {service} is excluded by insurer")
-
-    audit_score = max(0, 100 - (overcharge_count * 10))
-    return df, alerts, audit_score
-
-def show_summary(patient, hospital, insurer, policy, claim, audit_score, total_bill):
-    """Show key metrics"""
-    st.markdown("### 🏥 Patient & Insurance Summary")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Patient Name", patient)
-    c2.metric("Hospital", hospital)
-    c3.metric("Insurance Provider", insurer)
-
-    c4, c5, c6 = st.columns(3)
-    c4.metric("Policy No.", policy)
-    c5.metric("Claim ID", claim)
-    c6.metric("Audit Score", f"{audit_score}/100")
-
-    st.progress(audit_score / 100)
-    st.caption(f"Total Billed Amount: ₹{total_bill:,.2f}")
-
-def show_visuals(df):
-    """Show bar chart"""
-    if "Service" in df.columns and "Amount" in df.columns:
-        fig = px.bar(
-            df, x="Service", y="Amount", color="Audit_Flag",
-            color_discrete_map={"Overcharged": "#EF4444", "Excluded": "#FACC15", "": "#60A5FA"},
-            title="Service-wise Billing Overview"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-# ---------------------- MAIN APP ----------------------
 st.title("💊 Smart Medical Audit Dashboard")
+st.markdown("### Automated Bill Audit using CGHS Rates and Insurer Exclusions")
 
-# --- Patient Information ---
-st.markdown("### 🧾 Enter Patient & Insurance Details")
-col1, col2, col3 = st.columns(3)
-patient_name = col1.text_input("Patient Name", "John Doe")
-hospital_name = col2.text_input("Hospital Name", "CityCare Hospital")
-bill_date = col3.date_input("Bill Date")
+# ------------------ Upload Section ------------------
+st.sidebar.header("📤 Upload Required Files")
 
-col4, col5, col6 = st.columns(3)
-insurance_provider = col4.text_input("Insurance Provider", "Star Health")
-policy_number = col5.text_input("Policy Number", "POL12345")
-claim_number = col6.text_input("Claim ID", "CLM67890")
+bill_file = st.sidebar.file_uploader("Upload Hospital Bill (Excel/PDF/Image)", type=["xlsx", "xls", "pdf", "png", "jpg", "jpeg"])
+cghs_file = st.sidebar.file_uploader("Upload CGHS Rate List (Excel)", type=["xlsx", "xls"])
+exclusion_file = st.sidebar.file_uploader("Upload Insurer Exclusions (Excel)", type=["xlsx", "xls"])
 
-st.markdown("---")
+# ------------------ Helper Functions ------------------
+def extract_text_from_pdf(pdf_bytes):
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        text = ""
+        for page in pdf.pages:
+            text += page.extract_text() or ""
+        return text
 
-# --- File Upload ---
-uploaded_file = st.file_uploader(
-    "📂 Upload Bill (Excel, PDF, or Image)", type=["xlsx", "csv", "pdf", "png", "jpg", "jpeg"]
-)
+def extract_text_from_image(image_bytes):
+    reader = easyocr.Reader(["en"])
+    img = Image.open(io.BytesIO(image_bytes))
+    result = reader.readtext(np.array(img))
+    text = " ".join([r[1] for r in result])
+    return text
 
-if uploaded_file:
-    with st.spinner("Processing the uploaded bill..."):
-        time.sleep(1)
-        ext = uploaded_file.name.split(".")[-1].lower()
-        if ext in ["xlsx", "csv"]:
-            df = read_excel_or_csv(uploaded_file)
-        elif ext == "pdf":
-            df = read_pdf(uploaded_file)
-        elif ext in ["jpg", "jpeg", "png"]:
-            df = read_image(uploaded_file)
+def audit_bills(bill_df, cghs_df, exclusions_df):
+    alerts = []
+    audit_results = []
+    total_items = len(bill_df)
+    flagged_items = 0
+
+    for _, row in bill_df.iterrows():
+        service = str(row["Item"]).strip()
+        amount = float(row["Amount (₹)"])
+        flag = "✅ OK"
+        comment = ""
+
+        # Check exclusions
+        if not exclusions_df.empty:
+            excluded_services = exclusions_df[exclusions_df["Excluded_Service"].str.lower() == "yes"]["Services"].str.lower().values
+            if service.lower() in excluded_services:
+                flag = "❌ Excluded Service"
+                comment = "Service not covered by insurer"
+
+        # Check overcharging
+        match = cghs_df[cghs_df["Service"].str.lower() == service.lower()]
+        if not match.empty:
+            rate = float(match["Rate (₹)"].values[0])
+            if amount > rate:
+                flag = "⚠️ Overcharged"
+                comment = f"Charged ₹{amount}, CGHS Rate ₹{rate}"
+                flagged_items += 1
+        elif match.empty and flag == "✅ OK":
+            flag = "ℹ️ Not Found"
+            comment = "Service not found in CGHS list"
+
+        audit_results.append([service, amount, flag, comment])
+
+    audit_df = pd.DataFrame(audit_results, columns=["Service", "Amount (₹)", "Audit Flag", "Comment"])
+    audit_score = round(((total_items - flagged_items) / total_items) * 100, 2)
+    return audit_df, flagged_items, audit_score
+
+
+# ------------------ Process Section ------------------
+if bill_file and cghs_file and exclusion_file:
+    st.success("✅ All files uploaded successfully!")
+
+    # Read Excel files
+    cghs = pd.read_excel(cghs_file)
+    exclusions = pd.read_excel(exclusion_file)
+
+    if bill_file.name.endswith(".pdf"):
+        text = extract_text_from_pdf(bill_file.read())
+        st.text_area("Extracted PDF Text", text, height=200)
+        st.warning("⚠️ PDF parsing is text-based — use Excel for structured analysis.")
+        bill_df = pd.DataFrame()  # placeholder
+    elif bill_file.name.endswith((".png", ".jpg", ".jpeg")):
+        text = extract_text_from_image(bill_file.read())
+        st.text_area("Extracted Image Text", text, height=200)
+        st.warning("⚠️ OCR results may vary — please verify extracted data.")
+        bill_df = pd.DataFrame()
+    else:
+        bill_df = pd.read_excel(bill_file)
+
+    if not bill_df.empty:
+        st.subheader("📋 Uploaded Bill Preview")
+        st.dataframe(bill_df, use_container_width=True)
+
+        audited_df, flagged, audit_score = audit_bills(bill_df, cghs, exclusions)
+
+        st.subheader("🩺 Audit Results")
+        def highlight_rows(row):
+            if "Overcharged" in row["Audit Flag"]:
+                return ["background-color: #ffcccc"] * len(row)
+            elif "Excluded" in row["Audit Flag"]:
+                return ["background-color: #ffe699"] * len(row)
+            elif "Not Found" in row["Audit Flag"]:
+                return ["background-color: #d9e1f2"] * len(row)
+            else:
+                return ["background-color: #e2efda"] * len(row)
+
+        st.dataframe(audited_df.style.apply(highlight_rows, axis=1), use_container_width=True)
+
+        st.markdown(f"""
+        ### 🧾 Audit Summary  
+        - **Total Services:** {len(bill_df)}  
+        - **Flagged Items:** {flagged}  
+        - **Audit Score:** {audit_score}%  
+        """)
+
+        if audit_score < 90:
+            st.error("⚠️ Significant discrepancies detected. Please review flagged items.")
         else:
-            st.error("Unsupported file type.")
-            df = pd.DataFrame()
+            st.success("✅ Bill appears compliant with CGHS rates and insurer policies.")
 
-    if not df.empty:
-        st.success("✅ File processed successfully!")
-        st.dataframe(df.head(15))
-
-        # --- Audit Button ---
-        if st.button("🚀 Run Medical Audit"):
-            with st.spinner("Running AI audit..."):
-                cghs, exclusions = load_reference_data()
-                audited_df, alerts, audit_score = audit_bills(df, cghs, exclusions)
-                total_bill = audited_df["Amount"].sum() if "Amount" in audited_df.columns else 0
-                time.sleep(2)
-
-                show_summary(patient_name, hospital_name, insurance_provider, policy_number, claim_number, audit_score, total_bill)
-
-                st.markdown("### 🧾 Detailed Audit Report")
-                st.dataframe(audited_df)
-
-                if alerts:
-                    st.warning("⚠️ Audit Alerts & Observations")
-                    for alert in alerts:
-                        st.write(alert)
-                else:
-                    st.success("✅ No irregularities detected in this bill.")
-
-                show_visuals(audited_df)
 else:
-    st.info("Please upload a file to start audit.")
-
-# ---------------------- FOOTER ----------------------
-st.markdown("""
----
-**Smart Medical Audit © 2025**  
-Empowering transparency and accountability in medical billing.
-""")
+    st.info("👈 Upload all three files (Bill, CGHS Rate List, and Exclusions) to begin audit.")
