@@ -766,3 +766,440 @@ elif user_type == "🏢 B2B Enterprise":
             """, unsafe_allow_html=True)
         
         st.markdown("### 📈 Recent Activity")
+        
+        activity_data = pd.DataFrame({
+            'Date': pd.date_range(start='2025-10-17', periods=7),
+            'Bills Processed': [45, 52, 48, 61, 55, 58, 63],
+            'Savings (₹)': [45000, 52000, 48000, 61000, 55000, 58000, 63000]
+        })
+        
+        fig = px.line(activity_data, x='Date', y='Bills Processed', markers=True)
+        fig.update_layout(title="Daily Processing Volume")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("### 🏥 Top Hospitals")
+        hospital_stats = pd.DataFrame({
+            'Hospital': ['Apollo', 'Fortis', 'Max', 'Medanta', 'AIIMS'],
+            'Bills': [234, 198, 176, 143, 121],
+            'Avg Savings': [4500, 3800, 5200, 4100, 3600]
+        })
+        st.dataframe(hospital_stats, use_container_width=True)
+    
+    with tabs[1]:
+        st.markdown("### 📤 Bulk Bill Upload")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            bulk_file = st.file_uploader(
+                "Upload Excel/CSV with multiple bills",
+                type=["xlsx", "csv"],
+                help="Upload a file containing multiple patient bills for batch processing"
+            )
+            
+            st.markdown("""
+                <div class="info-card">
+                    <h4>📋 Required Columns</h4>
+                    <p>• Patient Name</p>
+                    <p>• Hospital Name</p>
+                    <p>• Bill Items (JSON or separate columns)</p>
+                    <p>• Amounts</p>
+                    <p>• Policy Number (optional)</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.info("**Batch Processing**\n\n✓ Process up to 1000 bills\n✓ Automated validation\n✓ Real-time status updates\n✓ Export results")
+            
+            if st.button("📥 Download Sample Template", use_container_width=True):
+                st.success("Template downloaded!")
+        
+        if bulk_file:
+            st.success(f"✓ File uploaded: {bulk_file.name}")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("🚀 Start Batch Processing", use_container_width=True):
+                    with st.spinner("Processing batch..."):
+                        progress_bar = st.progress(0)
+                        for i in range(100):
+                            progress_bar.progress(i + 1)
+                        st.success("✓ Batch processing completed!")
+            
+            with col2:
+                st.button("⏸️ Pause Processing", use_container_width=True)
+            
+            with col3:
+                st.button("📊 View Results", use_container_width=True)
+    
+    with tabs[2]:
+        st.markdown("### 🔧 Enterprise Settings")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### API Configuration")
+            api_key = st.text_input("API Key", type="password", value="sk_live_xxxxx")
+            webhook_url = st.text_input("Webhook URL", placeholder="https://your-domain.com/webhook")
+            
+            st.markdown("#### Compliance Rules")
+            max_variance = st.slider("Maximum Price Variance (%)", 0, 50, 10)
+            auto_flag = st.checkbox("Auto-flag excluded items", value=True)
+            require_approval = st.checkbox("Require manual approval for high-value bills", value=True)
+        
+        with col2:
+            st.markdown("#### Notification Settings")
+            email_alerts = st.checkbox("Email alerts for flagged items", value=True)
+            slack_integration = st.checkbox("Slack notifications", value=False)
+            daily_report = st.checkbox("Daily summary report", value=True)
+            
+            st.markdown("#### Team Management")
+            team_size = st.number_input("Team Size", min_value=1, max_value=100, value=5)
+            st.multiselect("Assigned Users", ["admin@company.com", "user1@company.com", "user2@company.com"])
+        
+        if st.button("💾 Save Settings", use_container_width=True):
+            st.success("✓ Settings saved successfully!")
+    
+    with tabs[3]:
+        st.markdown("### 📈 Advanced Analytics")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Savings by category
+            category_data = pd.DataFrame({
+                'Category': ['Room Charges', 'Surgery', 'Lab Tests', 'Medicines', 'Doctor Fees'],
+                'Savings': [45000, 78000, 23000, 34000, 28000]
+            })
+            fig = px.bar(category_data, x='Category', y='Savings', title="Savings by Category")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Monthly trend
+            monthly_data = pd.DataFrame({
+                'Month': ['Jun', 'Jul', 'Aug', 'Sep', 'Oct'],
+                'Savings': [180000, 220000, 195000, 245000, 280000]
+            })
+            fig = px.line(monthly_data, x='Month', y='Savings', markers=True, title="Monthly Savings Trend")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("### 📊 Performance Metrics")
+        metrics_df = pd.DataFrame({
+            'Metric': ['Average Processing Time', 'Accuracy Rate', 'Customer Satisfaction', 'ROI'],
+            'Value': ['2.4 hours', '98.3%', '4.7/5.0', '340%'],
+            'Change': ['+12%', '+2.1%', '+0.3', '+45%']
+        })
+        st.dataframe(metrics_df, use_container_width=True)
+
+elif user_type == "💳 Pricing & Plans":
+    # Pricing page
+    st.markdown("""
+        <div class="main-header">
+            <h1>💳 Pricing & Plans</h1>
+            <p>Choose the perfect plan for your needs</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    tabs = st.tabs(["👤 Individual Plans", "🏢 Enterprise Plans", "💰 Payment Options"])
+    
+    with tabs[0]:
+        st.markdown("### 👤 Plans for Individuals & Families")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+                <div class="info-card" style="text-align: center;">
+                    <h3>Basic</h3>
+                    <div style="font-size: 2.5rem; color: #3b82f6; font-weight: 700; margin: 1rem 0;">₹99</div>
+                    <p style="color: #64748b;">per bill</p>
+                    <hr>
+                    <p>✓ Single bill audit</p>
+                    <p>✓ CGHS verification</p>
+                    <p>✓ Basic report</p>
+                    <p>✓ Email support</p>
+                    <p style="color: #cbd5e1;">✗ Priority processing</p>
+                    <p style="color: #cbd5e1;">✗ EMI options</p>
+                </div>
+            """, unsafe_allow_html=True)
+            st.button("Select Basic", key="basic", use_container_width=True)
+        
+        with col2:
+            st.markdown("""
+                <div class="info-card" style="text-align: center; border: 3px solid #3b82f6;">
+                    <span class="premium-badge">POPULAR</span>
+                    <h3>Premium</h3>
+                    <div style="font-size: 2.5rem; color: #3b82f6; font-weight: 700; margin: 1rem 0;">₹499</div>
+                    <p style="color: #64748b;">per month</p>
+                    <hr>
+                    <p>✓ Unlimited audits</p>
+                    <p>✓ CGHS + insurer check</p>
+                    <p>✓ Detailed analytics</p>
+                    <p>✓ Priority support</p>
+                    <p>✓ 24hr processing</p>
+                    <p>✓ EMI available</p>
+                </div>
+            """, unsafe_allow_html=True)
+            if st.button("Select Premium", key="premium", use_container_width=True):
+                st.session_state.show_payment = True
+                st.session_state.selected_plan = "Premium - ₹499/month"
+        
+        with col3:
+            st.markdown("""
+                <div class="info-card" style="text-align: center;">
+                    <h3>Family</h3>
+                    <div style="font-size: 2.5rem; color: #3b82f6; font-weight: 700; margin: 1rem 0;">₹999</div>
+                    <p style="color: #64748b;">per month</p>
+                    <hr>
+                    <p>✓ Up to 6 members</p>
+                    <p>✓ Unlimited audits</p>
+                    <p>✓ All Premium features</p>
+                    <p>✓ Dedicated manager</p>
+                    <p>✓ Instant processing</p>
+                    <p>✓ Flexible EMI</p>
+                </div>
+            """, unsafe_allow_html=True)
+            st.button("Select Family", key="family", use_container_width=True)
+    
+    with tabs[1]:
+        st.markdown("### 🏢 Enterprise Solutions")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+                <div class="info-card">
+                    <h3>Business</h3>
+                    <div style="font-size: 2rem; color: #3b82f6; font-weight: 700; margin: 1rem 0;">₹9,999/month</div>
+                    <hr>
+                    <p>✓ Up to 500 bills/month</p>
+                    <p>✓ API access</p>
+                    <p>✓ Bulk processing</p>
+                    <p>✓ Custom compliance rules</p>
+                    <p>✓ Dedicated account manager</p>
+                    <p>✓ Advanced analytics</p>
+                    <p>✓ SLA guarantee (24hrs)</p>
+                    <p>✓ Quarterly payments available</p>
+                </div>
+            """, unsafe_allow_html=True)
+            st.button("Contact Sales", key="business", use_container_width=True)
+        
+        with col2:
+            st.markdown("""
+                <div class="info-card" style="border: 3px solid #f59e0b;">
+                    <span class="premium-badge">ENTERPRISE</span>
+                    <h3>Custom</h3>
+                    <div style="font-size: 2rem; color: #3b82f6; font-weight: 700; margin: 1rem 0;">Let's Talk</div>
+                    <hr>
+                    <p>✓ Unlimited processing</p>
+                    <p>✓ Full API suite</p>
+                    <p>✓ White-label option</p>
+                    <p>✓ Custom integrations</p>
+                    <p>✓ On-premise deployment</p>
+                    <p>✓ 24/7 dedicated support</p>
+                    <p>✓ SLA guarantee (4hrs)</p>
+                    <p>✓ Flexible payment terms</p>
+                </div>
+            """, unsafe_allow_html=True)
+            st.button("Schedule Demo", key="enterprise", use_container_width=True)
+        
+        st.markdown("### 🎁 Enterprise Benefits")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.info("**Volume Discounts**\n10% off for 1000+ bills/month")
+        with col2:
+            st.info("**Dedicated Support**\nPersonal account manager")
+        with col3:
+            st.info("**Custom Training**\nFree onboarding & training")
+    
+    with tabs[2]:
+        st.markdown("### 💰 Payment & EMI Options")
+        
+        if st.session_state.show_payment:
+            st.success(f"✓ Selected: {st.session_state.get('selected_plan', 'Premium Plan')}")
+        
+        st.markdown("#### Choose Payment Method")
+        
+        payment_method = st.radio(
+            "Payment Method",
+            ["💳 Credit/Debit Card", "🏦 Net Banking", "📱 UPI", "💼 EMI Options"],
+            horizontal=True
+        )
+        
+        if payment_method == "💳 Credit/Debit Card":
+            col1, col2 = st.columns(2)
+            with col1:
+                st.text_input("Card Number", placeholder="1234 5678 9012 3456")
+                st.text_input("Cardholder Name", placeholder="John Doe")
+            with col2:
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.text_input("Expiry (MM/YY)", placeholder="12/25")
+                with col_b:
+                    st.text_input("CVV", placeholder="123", type="password")
+            
+            st.checkbox("Save card for future payments")
+            
+        elif payment_method == "🏦 Net Banking":
+            st.selectbox("Select Bank", [
+                "State Bank of India",
+                "HDFC Bank",
+                "ICICI Bank",
+                "Axis Bank",
+                "Kotak Mahindra Bank"
+            ])
+            
+        elif payment_method == "📱 UPI":
+            st.text_input("UPI ID", placeholder="yourname@upi")
+            st.info("You'll be redirected to your UPI app to complete payment")
+            
+        elif payment_method == "💼 EMI Options":
+            st.markdown("### 📊 EMI Calculator")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                bill_amount = st.number_input("Bill Amount (₹)", min_value=1000, max_value=1000000, value=50000, step=1000)
+            
+            with col2:
+                emi_tenure = st.selectbox("EMI Tenure", ["3 months", "6 months", "9 months", "12 months"])
+            
+            with col3:
+                interest_rate = st.number_input("Interest Rate (%)", min_value=0.0, max_value=30.0, value=12.0, step=0.5)
+            
+            # Calculate EMI
+            tenure_months = int(emi_tenure.split()[0])
+            monthly_rate = interest_rate / (12 * 100)
+            
+            if monthly_rate > 0:
+                emi = (bill_amount * monthly_rate * (1 + monthly_rate)**tenure_months) / ((1 + monthly_rate)**tenure_months - 1)
+            else:
+                emi = bill_amount / tenure_months
+            
+            total_payment = emi * tenure_months
+            total_interest = total_payment - bill_amount
+            
+            st.markdown("### 💰 EMI Breakdown")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value">₹{emi:,.0f}</div>
+                        <div class="metric-label">Monthly EMI</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value">₹{total_payment:,.0f}</div>
+                        <div class="metric-label">Total Payment</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value">₹{total_interest:,.0f}</div>
+                        <div class="metric-label">Total Interest</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            with col4:
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value">{tenure_months}</div>
+                        <div class="metric-label">Months</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            # EMI Schedule
+            st.markdown("### 📅 Payment Schedule")
+            
+            schedule_data = []
+            remaining_principal = bill_amount
+            
+            for month in range(1, tenure_months + 1):
+                interest_component = remaining_principal * monthly_rate
+                principal_component = emi - interest_component
+                remaining_principal -= principal_component
+                
+                schedule_data.append({
+                    'Month': month,
+                    'EMI (₹)': f"₹{emi:,.0f}",
+                    'Principal (₹)': f"₹{principal_component:,.0f}",
+                    'Interest (₹)': f"₹{interest_component:,.0f}",
+                    'Balance (₹)': f"₹{max(0, remaining_principal):,.0f}"
+                })
+            
+            schedule_df = pd.DataFrame(schedule_data)
+            st.dataframe(schedule_df, use_container_width=True, height=300)
+            
+            st.markdown("#### 🏦 EMI Partners")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("""
+                    <div class="info-card">
+                        <h4>Bajaj Finserv</h4>
+                        <p>✓ 0% interest for 3 months</p>
+                        <p>✓ Instant approval</p>
+                        <p>✓ No documentation</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown("""
+                    <div class="info-card">
+                        <h4>HDFC Bank EMI</h4>
+                        <p>✓ Flexible tenure</p>
+                        <p>✓ Competitive rates</p>
+                        <p>✓ Easy processing</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                st.markdown("""
+                    <div class="info-card">
+                        <h4>Credit Card EMI</h4>
+                        <p>✓ Convert to EMI</p>
+                        <p>✓ Bank-specific offers</p>
+                        <p>✓ Quick conversion</p>
+                    </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.checkbox("I agree to the Terms & Conditions and Privacy Policy")
+        
+        with col2:
+            if st.button("💳 Pay Now", use_container_width=True):
+                with st.spinner("Processing payment..."):
+                    import time
+                    time.sleep(2)
+                st.success("✅ Payment successful! Thank you for choosing MediAudit Pro.")
+                st.balloons()
+
+# Footer
+st.markdown("---")
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown("**MediAudit Pro**")
+    st.markdown("AI-powered medical bill auditing")
+
+with col2:
+    st.markdown("**Quick Links**")
+    st.markdown("• About Us")
+    st.markdown("• Contact")
+    st.markdown("• Privacy Policy")
+
+with col3:
+    st.markdown("**Support**")
+    st.markdown("📧 support@mediaudit.com")
+    st.markdown("📱 +91-8148186386")
