@@ -99,6 +99,22 @@ st.markdown("""
             text-align: center;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
+
+        /* Specific card for Total Billed */
+        .billed-card {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        }
+
+        /* Specific card for Savings */
+        .savings-card {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        }
+
+        /* Specific card for Final Amount */
+        .final-card {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        }
+
         
         .metric-value {
             font-size: 2.5rem;
@@ -618,6 +634,7 @@ elif user_type == "👤 Patient Portal":
                 results_df = pd.DataFrame(results)
                 flagged_count = len([r for r in results if r['Status'] == 'Overcharged'])
                 audit_score = max(0, 100 - flagged_count * 10)
+                final_reduced_amount = total_billed - potential_savings
                 
                 # Store audit
                 st.session_state.current_audit = {
@@ -640,40 +657,40 @@ elif user_type == "👤 Patient Portal":
                 st.success("✅ Audit Complete!")
                 st.markdown("---")
                 
-                # Results
+                # Results - MAKING TOTAL BILLED AND POTENTIAL SAVINGS PROMINENT
                 st.markdown("### 📊 Audit Summary")
                 
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
                     st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-value">{len(results_df)}</div>
-                            <div class="metric-label">Items Checked</div>
+                        <div class="metric-card billed-card">
+                            <div class="metric-value">₹{total_billed:,.0f}</div>
+                            <div class="metric-label">TOTAL BILLED AMOUNT</div>
                         </div>
                     """, unsafe_allow_html=True)
                 
                 with col2:
                     st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-value">{flagged_count}</div>
-                            <div class="metric-label">Issues Found</div>
+                        <div class="metric-card savings-card">
+                            <div class="metric-value" style="color: #92400e;">₹{potential_savings:,.0f}</div>
+                            <div class="metric-label">POTENTIAL SAVINGS</div>
                         </div>
                     """, unsafe_allow_html=True)
                 
                 with col3:
                     st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-value">{audit_score}</div>
-                            <div class="metric-label">Audit Score</div>
+                        <div class="metric-card final-card">
+                            <div class="metric-value" style="color: #065f46;">₹{final_reduced_amount:,.0f}</div>
+                            <div class="metric-label">EXPECTED REDUCED BILL</div>
                         </div>
                     """, unsafe_allow_html=True)
                 
                 with col4:
                     st.markdown(f"""
-                        <div class="metric-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
-                            <div class="metric-value" style="color: #92400e;">₹{potential_savings:,.0f}</div>
-                            <div class="metric-label">Potential Savings</div>
+                        <div class="metric-card">
+                            <div class="metric-value">{flagged_count}</div>
+                            <div class="metric-label">ISSUES FOUND</div>
                         </div>
                     """, unsafe_allow_html=True)
                 
@@ -740,12 +757,12 @@ elif user_type == "👤 Patient Portal":
                     st.markdown(f"""
                         <div class="negotiation-card">
                             <h3>🤝 Want Us To Negotiate For You?</h3>
-                            <p>We found potential savings of ₹{potential_savings:,.0f}</p>
-                            <p>Our experts can negotiate with {hospital} on your behalf</p>
+                            <p>We found potential savings of **₹{potential_savings:,.0f}**</p>
+                            <p>Our experts will negotiate with {hospital} on your behalf to reduce the total bill.</p>
                             <p style="font-weight: 700; font-size: 1.1rem; color: #92400e;">
-                                You pay only 15% commission on actual savings achieved
+                                You pay only **15% commission on actual savings** achieved!
                             </p>
-                            <p style="font-size: 0.9rem;">Example: We save you ₹{potential_savings:,.0f} → Your MAX fee: ₹{potential_savings*0.15:,.0f}</p>
+                            <p style="font-size: 0.9rem;">Example: We save you ₹{potential_savings:,.0f} (potential) → Your MAX fee: ₹{potential_savings*0.15:,.0f}</p>
                         </div>
                     """, unsafe_allow_html=True)
                     
@@ -840,6 +857,7 @@ elif user_type == "👤 Patient Portal":
             total_billed = 39700
             total_standard = 26800
             potential_savings = 12900
+            final_reduced_amount = total_billed - potential_savings # 26800
             
             # Demo results with specific overcharges
             demo_results = [
@@ -909,33 +927,33 @@ elif user_type == "👤 Patient Portal":
             
             with col1:
                 st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value">8</div>
-                        <div class="metric-label">Items Checked</div>
+                    <div class="metric-card billed-card">
+                        <div class="metric-value">₹{total_billed:,.0f}</div>
+                        <div class="metric-label">TOTAL BILLED AMOUNT</div>
                     </div>
                 """, unsafe_allow_html=True)
             
             with col2:
                 st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value">4</div>
-                        <div class="metric-label">Issues Found</div>
+                    <div class="metric-card savings-card">
+                        <div class="metric-value" style="color: #92400e;">₹{potential_savings:,.0f}</div>
+                        <div class="metric-label">POTENTIAL SAVINGS</div>
                     </div>
                 """, unsafe_allow_html=True)
             
             with col3:
                 st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value">60</div>
-                        <div class="metric-label">Audit Score</div>
+                    <div class="metric-card final-card">
+                        <div class="metric-value" style="color: #065f46;">₹{final_reduced_amount:,.0f}</div>
+                        <div class="metric-label">EXPECTED REDUCED BILL</div>
                     </div>
                 """, unsafe_allow_html=True)
-            
+
             with col4:
                 st.markdown(f"""
-                    <div class="metric-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
-                        <div class="metric-value" style="color: #92400e;">₹12,900</div>
-                        <div class="metric-label">Potential Savings</div>
+                    <div class="metric-card">
+                        <div class="metric-value">{flagged_count}</div>
+                        <div class="metric-label">Issues Found</div>
                     </div>
                 """, unsafe_allow_html=True)
             
@@ -998,14 +1016,14 @@ elif user_type == "👤 Patient Portal":
             st.markdown(f"""
                 <div class="negotiation-card">
                     <h3>🤝 Demo: Our Negotiation Service</h3>
-                    <p>In this demo, we found potential savings of ₹12,900</p>
+                    <p>In this demo, we found potential savings of **₹12,900**</p>
                     <p>Our experts would negotiate with the hospital on your behalf</p>
                     <p style="font-weight: 700; font-size: 1.1rem; color: #92400e;">
                         You would pay only 15% commission on actual savings achieved
                     </p>
                     <p style="font-size: 0.9rem;">Example: We save you ₹12,900 → Your fee: ₹1,935</p>
                     <p style="margin-top: 1rem; padding: 1rem; background: white; border-radius: 8px;">
-                        <strong>This is a demo.</strong> Upload a real bill to use our actual negotiation service!
+                        **This is a demo.** Upload a real bill to use our actual negotiation service!
                     </p>
                 </div>
             """, unsafe_allow_html=True)
@@ -1101,7 +1119,7 @@ elif user_type == "👤 Patient Portal":
                         if is_negotiated:
                             st.markdown(f"**Payment Breakdown:**")
                             st.markdown(f" - Hospital: **₹{bill['reduced_bill_hospital']:,.0f}**")
-                            st.markdown(f" - MediAudit Fee: **₹{bill['commission_fee']:,.0f}**")
+                            st.markdown(f" - MediAudit Fee (15% Savings): **₹{bill['commission_fee']:,.0f}**")
                         else:
                             st.markdown(f"**Total Due:** **₹{payment_due:,.0f}**")
                             st.write("Full bill amount due.")
@@ -1205,9 +1223,10 @@ elif user_type == "👤 Patient Portal":
                     </div>
                 """, unsafe_allow_html=True)
             
+            # Updated Payment Methods
             payment_method = st.radio(
                 "Select Payment Method", 
-                ["💳 Credit/Debit Card", "🏦 Net Banking", "📱 UPI", "💼 EMI Options"], 
+                ["💳 Credit/Debit Card", "🏦 Net Banking", "📱 UPI", "💼 EMI Options", "🛍️ BNPL / Pay Later"], 
                 horizontal=True
             )
             
@@ -1260,11 +1279,22 @@ elif user_type == "👤 Patient Portal":
                     st.markdown("---")
                     st.markdown(f"**Monthly EMI:**")
                     st.markdown(f"**₹{emi_amount:,.0f}**")
+
+            elif payment_method == "🛍️ BNPL / Pay Later":
+                st.markdown("### 🛍️ Buy Now, Pay Later (BNPL)")
+                st.info("Pay 50% now, balance in 30 days. Subject to instant approval.")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.selectbox("Select BNPL Partner", ["FlexiPay Health", "SliceIt Medical", "ZingNow", "Other"])
+                    st.info(f"Payment today: **₹{total_payment * 0.5:,.0f}**")
+                with col2:
+                    st.text_input("Aadhar/KYC Details", placeholder="Enter 12-digit ID for verification")
+
             
             st.markdown("---")
             
             # Final Pay Now Button (Transaction Gateway)
-            if st.button(f"🔒 Pay Now - ₹{total_payment:,.0f}", use_container_width=True, type="primary"):
+            if st.button(f"🔒 Finalize Payment - ₹{total_payment:,.0f}", use_container_width=True, type="primary"):
                 
                 paid_bills_ids = []
                 for bill in payment_bills:
@@ -1320,8 +1350,9 @@ elif user_type == "👤 Patient Portal":
                         st.write(f"**Request ID:** {req['id']}")
                         st.write(f"**Patient:** {req['patient_name']} @ {req['hospital']}")
                         st.write(f"**Original Savings Target:** ₹{req['potential_savings']:,.0f}")
+                        st.caption("Status: Expert Reviewing Bill and Negotiating with Hospital...")
                     with col2:
-                        st.markdown("##### Status: **Pending**")
+                        st.markdown(f"##### Status: **{req['status']}**")
                         
                     st.markdown("---")
                     
