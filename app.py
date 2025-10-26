@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 import os
 from datetime import datetime, timedelta
 import time
+import random
 
 # Page config
 st.set_page_config(
@@ -299,6 +300,12 @@ if 'payment_history' not in st.session_state:
     st.session_state.payment_history = []
 if 'negotiation_requests' not in st.session_state:
     st.session_state.negotiation_requests = []
+if 'show_payment' not in st.session_state:
+    st.session_state.show_payment = False
+if 'payment_bills' not in st.session_state:
+    st.session_state.payment_bills = []
+if 'payment_type' not in st.session_state:
+    st.session_state.payment_type = None
 
 # Sidebar
 with st.sidebar:
@@ -324,8 +331,8 @@ with st.sidebar:
         
         if st.session_state.bill_queue:
             st.markdown("---")
-            total_queue = sum([b['total_billed'] for b in st.session_state.bill_queue])
-            st.info(f"**Queue Total**\n₹{total_queue:,.0f}")
+            total_queue = sum([b.get('total_to_pay', b['total_billed']) for b in st.session_state.bill_queue])
+            st.info(f"**Queue Total Due**\n₹{total_queue:,.0f}")
     
     st.markdown("---")
     st.markdown("### 💬 Quick Help")
@@ -345,11 +352,9 @@ if user_type == "🏠 Home":
     
     st.markdown("### 🎯 What We Audit For")
     
-    # --- HOMEPAGE ALIGNMENT FIX: Changed from 4 columns to 2 rows of 2 columns for better responsiveness ---
-    col_row1_1, col_row1_2 = st.columns(2)
-    col_row2_1, col_row2_2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns(4)
     
-    with col_row1_1:
+    with col1:
         st.markdown("""
             <div class="info-card" style="text-align: center;">
                 <h3>💊</h3>
@@ -358,7 +363,7 @@ if user_type == "🏠 Home":
             </div>
         """, unsafe_allow_html=True)
     
-    with col_row1_2:
+    with col2:
         st.markdown("""
             <div class="info-card" style="text-align: center;">
                 <h3>🔄</h3>
@@ -367,9 +372,7 @@ if user_type == "🏠 Home":
             </div>
         """, unsafe_allow_html=True)
     
-    st.markdown("---") # Visual separator between rows
-        
-    with col_row2_1:
+    with col3:
         st.markdown("""
             <div class="info-card" style="text-align: center;">
                 <h3>📈</h3>
@@ -378,7 +381,7 @@ if user_type == "🏠 Home":
             </div>
         """, unsafe_allow_html=True)
     
-    with col_row2_2:
+    with col4:
         st.markdown("""
             <div class="info-card" style="text-align: center;">
                 <h3>📦</h3>
@@ -386,7 +389,6 @@ if user_type == "🏠 Home":
                 <p>Package services split to inflate cost</p>
             </div>
         """, unsafe_allow_html=True)
-    # ---------------------------------------------------------------------------------------------------
     
     st.markdown("### 💼 Our Services")
     
@@ -426,6 +428,9 @@ elif user_type == "👤 Patient Portal":
     
     tabs = st.tabs(["📤 New Bill Audit", "🗂️ Bill Queue & Payment", "🤝 Negotiation Requests", "📋 History"])
     
+    # ======================================================================
+    # TAB 0: New Bill Audit (Existing Logic)
+    # ======================================================================
     with tabs[0]:
         st.markdown("### 👤 Patient Information")
         col1, col2, col3 = st.columns(3)
@@ -439,7 +444,7 @@ elif user_type == "👤 Patient Portal":
             hospital_list = ["Select hospital", "AIIMS Delhi", "Apollo Hospital", "Fortis Hospital", 
                            "Medanta", "Manipal Hospital", "Narayana Health", "Max Hospital"]
             hospital = st.selectbox("Hospital", hospital_list)
-            admission_date = st.date_input("Admission Date")
+            admission_date = st.date_input("Admission Date", datetime.now().date() - timedelta(days=7))
         
         with col3:
             contact_number = st.text_input("Contact Number", placeholder="+91-9876543210")
@@ -576,7 +581,6 @@ elif user_type == "👤 Patient Portal":
                         row_ref = cghs_df[cghs_df["service_norm"] == matched].iloc[0]
                         rate = float(row_ref["Rate (₹)"])
                         standard_rate = rate
-                        total_standard += rate
                         
                         if amount > rate * 1.15:  # 15% tolerance
                             status = "Overcharged"
@@ -595,12 +599,12 @@ elif user_type == "👤 Patient Portal":
                             
                             comment = f"₹{amount:,.0f} vs ₹{rate:,.0f} (Save ₹{savings:,.0f})"
                             alerts.append(f"⚠️ {r.get('Item')}: {overcharge_type} - Save ₹{savings:,.0f}")
-                        else:
-                            total_standard += amount
+                        
+                        total_standard += rate
                     else:
                         status = "Unlisted"
                         comment = "Not in CGHS rates"
-                        total_standard += amount
+                        total_standard += amount # Assume billed amount is the standard if unlisted
                     
                     results.append({
                         "Service": r.get("Item"),
@@ -629,7 +633,8 @@ elif user_type == "👤 Patient Portal":
                     'audit_score': audit_score,
                     'flagged_count': flagged_count,
                     'alerts': alerts,
-                    'overcharge_types': overcharge_types
+                    'overcharge_types': overcharge_types,
+                    'negotiation_status': 'Initial Audit' # New status field
                 }
                 
                 st.success("✅ Audit Complete!")
@@ -740,7 +745,7 @@ elif user_type == "👤 Patient Portal":
                             <p style="font-weight: 700; font-size: 1.1rem; color: #92400e;">
                                 You pay only 15% commission on actual savings achieved
                             </p>
-                            <p style="font-size: 0.9rem;">Example: We save you ₹{potential_savings:,.0f} → Your fee: ₹{potential_savings*0.15:,.0f}</p>
+                            <p style="font-size: 0.9rem;">Example: We save you ₹{potential_savings:,.0f} → Your MAX fee: ₹{potential_savings*0.15:,.0f}</p>
                         </div>
                     """, unsafe_allow_html=True)
                     
@@ -760,15 +765,11 @@ elif user_type == "👤 Patient Portal":
                                 'audit_data': st.session_state.current_audit
                             }
                             st.session_state.negotiation_requests.append(negotiation_request)
-                            # --- NEGOTIATION MESSAGE UPDATE: Added 12-48hr timeframe and savings outcome ---
-                            st.success(f"""
-                                **✅ Negotiation Request Submitted!**
-                                Our team will now start the negotiation process with {hospital}. 
-                                **This process typically takes 12 to 48 hours.**
-                                Once complete, you will be notified in the **Negotiation Requests** tab with the final saved amount and the reduced bill.
-                            """)
+                            st.success("✅ Negotiation request submitted! Check the 'Negotiation Requests' tab for status.")
                             st.balloons()
-                            # -------------------------------------------------------------------------------
+                            # Clear current audit to start a new one
+                            st.session_state.current_audit = None
+                            st.rerun()
                     
                     with col2:
                         if st.button("No Thanks, I'll Handle It", use_container_width=True):
@@ -784,12 +785,14 @@ elif user_type == "👤 Patient Portal":
                     if st.button("🗂️ Add to Bill Queue", use_container_width=True):
                         st.session_state.bill_queue.append(st.session_state.current_audit)
                         st.success(f"✓ Added! {len(st.session_state.bill_queue)} bills in queue")
+                        st.session_state.current_audit = None
                         st.rerun()
                 
                 with col2:
                     if st.button("💰 Pay This Bill Now", use_container_width=True, type="primary"):
                         st.session_state.payment_bills = [st.session_state.current_audit]
                         st.session_state.show_payment = True
+                        st.session_state.payment_type = "single"
                         st.rerun()
                 
                 with col3:
@@ -806,19 +809,6 @@ elif user_type == "👤 Patient Portal":
         
         if st.button("🚀 Run Demo Bill Audit", use_container_width=True, type="secondary"):
             # Create dummy bill
-            demo_bill = pd.DataFrame({
-                'Item': [
-                    'Room Rent (General Ward)',
-                    'Doctor Consultation',
-                    'Blood Test - CBC',
-                    'Surgical Gloves (Box)',
-                    'CT Scan - Head',
-                    'Injection Syringe (Pack of 10)',
-                    'ICU Charges (Per Day)',
-                    'X-Ray - Chest'
-                ],
-                'Amount (₹)': [8500, 3000, 2000, 4500, 6000, 2500, 12000, 1200]
-            })
             
             # Set demo patient info
             demo_patient_name = "Demo Patient"
@@ -847,19 +837,6 @@ elif user_type == "👤 Patient Portal":
             progress_bar.empty()
             
             # Perform Demo Audit
-            cghs_df = load_reference_data()
-            cghs_df["service_norm"] = cghs_df["Service"].astype(str).str.strip().str.lower()
-            cghs_services = list(cghs_df["service_norm"].dropna().unique())
-            
-            results = []
-            alerts = []
-            overcharge_types = {
-                "Inflated Consumables": 2,
-                "Duplicate Billing": 0,
-                "Upcoding": 1,
-                "Unbundling": 0
-            }
-            
             total_billed = 39700
             total_standard = 26800
             potential_savings = 12900
@@ -893,6 +870,13 @@ elif user_type == "👤 Patient Portal":
                 "⚠️ Injection Syringe (Pack of 10): Inflated Consumables - Save ₹2,000"
             ]
             
+            overcharge_types = {
+                "Inflated Consumables": 2,
+                "Duplicate Billing": 0,
+                "Upcoding": 1,
+                "Unbundling": 0
+            }
+
             flagged_count = 4
             audit_score = 60
             
@@ -911,7 +895,8 @@ elif user_type == "👤 Patient Portal":
                 'flagged_count': flagged_count,
                 'alerts': alerts,
                 'overcharge_types': overcharge_types,
-                'is_demo': True
+                'is_demo': True,
+                'negotiation_status': 'Initial Audit'
             }
             
             st.success("✅ Demo Audit Complete!")
@@ -1015,9 +1000,13 @@ elif user_type == "👤 Patient Portal":
                     <h3>🤝 Demo: Our Negotiation Service</h3>
                     <p>In this demo, we found potential savings of ₹12,900</p>
                     <p>Our experts would negotiate with the hospital on your behalf</p>
-                    <p style="font-weight: 700; font-size: 1.1rem; color: #92400e;"> You would pay only 15% commission on actual savings achieved </p>
+                    <p style="font-weight: 700; font-size: 1.1rem; color: #92400e;">
+                        You would pay only 15% commission on actual savings achieved
+                    </p>
                     <p style="font-size: 0.9rem;">Example: We save you ₹12,900 → Your fee: ₹1,935</p>
-                    <p style="margin-top: 1rem; padding: 1rem; background: white; border-radius: 8px;"> <strong>This is a demo.</strong> Upload a real bill to use our actual negotiation service! </p>
+                    <p style="margin-top: 1rem; padding: 1rem; background: white; border-radius: 8px;">
+                        <strong>This is a demo.</strong> Upload a real bill to use our actual negotiation service!
+                    </p>
                 </div>
             """, unsafe_allow_html=True)
             
@@ -1027,6 +1016,7 @@ elif user_type == "👤 Patient Portal":
                 if st.button("🗂️ Add Demo to Queue", use_container_width=True):
                     st.session_state.bill_queue.append(st.session_state.current_audit)
                     st.success(f"✓ Demo added! {len(st.session_state.bill_queue)} bills in queue")
+                    st.session_state.current_audit = None
             with col2:
                 st.button("💰 Try Payment Flow", use_container_width=True, disabled=True)
                 st.caption("Available with real bills")
@@ -1034,51 +1024,136 @@ elif user_type == "👤 Patient Portal":
                 if st.button("📥 Download Demo Report", use_container_width=True):
                     st.success("✓ Demo report downloaded!")
 
+    # ======================================================================
+    # TAB 1: Bill Queue & Payment (Updated for Negotiation/Commission/Payment Flow)
+    # ======================================================================
     with tabs[1]:
         st.markdown("### 🗂️ Bill Queue & Payment")
+        
+        # --- Logic to handle newly negotiated bills ---
+        # Find negotiation requests that were resolved and move them to the queue
+        requests_to_remove = []
+        for req in st.session_state.negotiation_requests:
+            if req['status'] == 'Negotiated':
+                # Create a new bill object based on the negotiated result
+                negotiated_bill = {
+                    'patient_name': req['patient_name'],
+                    'hospital': req['hospital'],
+                    'contact': req['contact'],
+                    'email': req['email'],
+                    'total_billed': req['audit_data']['total_billed'],
+                    'potential_savings': req['actual_savings'],
+                    'negotiation_id': req['id'],
+                    'negotiation_status': 'Negotiated - Ready to Pay',
+                    'reduced_bill_hospital': req['final_hospital_amount'],
+                    'commission_fee': req['final_commission'],
+                    'total_to_pay': req['total_to_pay'],
+                    'date': req['date'],
+                    'is_demo': req['audit_data'].get('is_demo', False)
+                }
+                # Check if this bill is already in the queue to avoid duplicates
+                if not any(b.get('negotiation_id') == negotiated_bill['negotiation_id'] for b in st.session_state.bill_queue):
+                    st.session_state.bill_queue.append(negotiated_bill)
+                requests_to_remove.append(req)
+        
+        # Remove resolved negotiations from pending list
+        st.session_state.negotiation_requests = [req for req in st.session_state.negotiation_requests if req not in requests_to_remove]
+        # -----------------------------------------------
+
         if not st.session_state.bill_queue:
-            st.info("📭 No bills in queue. Audit a bill and add it to queue to pay multiple bills together!")
+            st.info("📭 No bills in queue. Audit a bill and add it to queue or resolve a negotiation request!")
         else:
-            total_queue = sum([b['total_billed'] for b in st.session_state.bill_queue])
+            total_queue = sum([b.get('total_to_pay', b['total_billed']) for b in st.session_state.bill_queue])
             st.markdown(f"""
                 <div class="info-card" style="background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border-color: #fb923c;">
                     <h3>📋 {len(st.session_state.bill_queue)} Bills in Queue</h3>
-                    <p style="font-size: 1.3rem; font-weight: 700; color: #1e3a8a;">Total: ₹{total_queue:,.0f}</p>
+                    <p style="font-size: 1.3rem; font-weight: 700; color: #1e3a8a;">Total Payment Due: ₹{total_queue:,.0f}</p>
                 </div>
             """, unsafe_allow_html=True)
             
+            st.markdown("---")
+            
             # Display queued bills
+            bills_to_remove_from_queue = []
             for idx, bill in enumerate(st.session_state.bill_queue):
                 is_demo = bill.get('is_demo', False)
+                is_negotiated = bill.get('negotiation_status') == 'Negotiated - Ready to Pay'
+                
+                total_bill_amount = bill['total_billed']
+                payment_due = bill.get('total_to_pay', total_bill_amount)
+                
                 demo_badge = " 🎭 DEMO" if is_demo else ""
-                with st.expander(f"Bill #{idx+1}{demo_badge}: {bill['patient_name']} - {bill['hospital']} (₹{bill['total_billed']:,.0f})"):
+                neg_badge = " 🤝 NEGOTIATED" if is_negotiated else ""
+                
+                with st.expander(f"Bill #{idx+1}{demo_badge}{neg_badge}: {bill['patient_name']} - {bill['hospital']} (₹{payment_due:,.0f} Due)"):
+                    
                     col1, col2, col3 = st.columns(3)
+                    
                     with col1:
-                        st.write(f"**Date:** {bill['date']}")
                         st.write(f"**Hospital:** {bill['hospital']}")
+                        st.write(f"**Original Bill:** ₹{total_bill_amount:,.0f}")
+                    
                     with col2:
-                        st.write(f"**Audit Score:** {bill['audit_score']}/100")
-                        st.write(f"**Issues:** {bill['flagged_count']}")
+                        st.write(f"**Savings Found:** ₹{bill['potential_savings']:,.0f}")
+                        st.write(f"**Status:** {bill.get('negotiation_status', 'Awaiting Payment')}")
+
                     with col3:
-                        st.write(f"**Total:** ₹{bill['total_billed']:,.0f}")
-                        st.write(f"**Savings:** ₹{bill['potential_savings']:,.0f}")
-                    st.dataframe(bill['results_df'], use_container_width=True)
-                    col1, col2 = st.columns(2)
-                    with col1:
+                        if is_negotiated:
+                            st.markdown(f"**Payment Breakdown:**")
+                            st.markdown(f" - Hospital: **₹{bill['reduced_bill_hospital']:,.0f}**")
+                            st.markdown(f" - MediAudit Fee: **₹{bill['commission_fee']:,.0f}**")
+                        else:
+                            st.markdown(f"**Total Due:** **₹{payment_due:,.0f}**")
+                            st.write("Full bill amount due.")
+
+                    st.markdown("---")
+                    
+                    col_c1, col_c2, col_c3 = st.columns(3)
+                    
+                    with col_c1:
                         if not is_demo:
-                            if st.button(f"💰 Pay Bill #{idx+1}", key=f"pay_{idx}", use_container_width=True):
+                            if st.button(f"💰 Pay Bill #{idx+1}", key=f"pay_{idx}", use_container_width=True, type="primary"):
                                 st.session_state.payment_bills = [bill]
                                 st.session_state.show_payment = True
+                                st.session_state.payment_type = "single"
                                 st.rerun()
                         else:
                             st.button(f"💰 Pay Bill #{idx+1}", key=f"pay_{idx}", use_container_width=True, disabled=True)
                             st.caption("Demo bills can't be paid")
-                    with col2:
+                    
+                    with col_c2:
                         if st.button(f"🗑️ Remove", key=f"remove_{idx}", use_container_width=True):
-                            st.session_state.bill_queue.pop(idx)
+                            bills_to_remove_from_queue.append(bill)
                             st.rerun()
-            
+                    
+                    with col_c3:
+                        # Option to initiate negotiation if not negotiated
+                        if not is_negotiated and bill['potential_savings'] > 500:
+                            if st.button("🤝 Initiate Negotiation", key=f"neg_init_{idx}", use_container_width=True):
+                                # Create a negotiation request and remove from queue temporarily
+                                negotiation_request = {
+                                    'id': f"NEG{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}",
+                                    'patient_name': bill['patient_name'],
+                                    'hospital': bill['hospital'],
+                                    'contact': bill.get('contact', 'N/A'),
+                                    'email': bill.get('email', 'N/A'),
+                                    'potential_savings': bill['potential_savings'],
+                                    'commission': bill['potential_savings'] * 0.15,
+                                    'status': 'Pending',
+                                    'date': datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                    'audit_data': bill
+                                }
+                                st.session_state.negotiation_requests.append(negotiation_request)
+                                bills_to_remove_from_queue.append(bill)
+                                st.success("Negotiation request sent! Check the 'Negotiation Requests' tab for status.")
+                                st.rerun()
+
+            # Process removals outside the loop
+            st.session_state.bill_queue = [b for b in st.session_state.bill_queue if b not in bills_to_remove_from_queue]
+
+
             st.markdown("---")
+            
             # Check if any non-demo bills exist
             non_demo_bills = [b for b in st.session_state.bill_queue if not b.get('is_demo', False)]
             col1, col2 = st.columns(2)
@@ -1087,295 +1162,288 @@ elif user_type == "👤 Patient Portal":
                     if st.button("💳 Pay All Bills Together", use_container_width=True, type="primary"):
                         st.session_state.payment_bills = non_demo_bills
                         st.session_state.show_payment = True
+                        st.session_state.payment_type = "bulk"
                         st.rerun()
                 else:
                     st.button("💳 Pay All Bills Together", use_container_width=True, disabled=True)
-                    st.caption("Only demo bills in queue")
+                    st.caption("Only demo bills in queue or queue is empty")
             with col2:
                 if st.button("🗑️ Clear Queue", use_container_width=True):
                     st.session_state.bill_queue = []
                     st.rerun()
 
-        # Payment Section
-        if st.session_state.get('show_payment', False):
+        # ----------------------------------------------------------------------
+        # Payment Section (Payment Gateway Flow)
+        # ----------------------------------------------------------------------
+        if st.session_state.get('show_payment', False) and st.session_state.get('payment_bills'):
             st.markdown("---")
             st.markdown("## 💳 Complete Your Payment")
+            
             payment_bills = st.session_state.get('payment_bills', [])
-            total_payment = sum([bill['total_billed'] for bill in payment_bills])
+            
+            # Calculate total payments (Hospital + Commission)
+            hospital_total = 0.0
+            commission_total = 0.0
+            
+            for bill in payment_bills:
+                if bill.get('negotiation_status') == 'Negotiated - Ready to Pay':
+                    hospital_total += bill['reduced_bill_hospital']
+                    commission_total += bill['commission_fee']
+                else:
+                    hospital_total += bill['total_billed']
+            
+            total_payment = hospital_total + commission_total
+            
             st.success(f"💰 **Total Payment Amount: ₹{total_payment:,.0f}**")
             st.markdown(f"Paying for {len(payment_bills)} bill(s)")
             
-            # --- PAYMENT OPTION UPDATE: Added BNPL and grouped EMI/BNPL ---
+            if commission_total > 0:
+                st.markdown(f"""
+                    <div style="padding: 1rem; border-radius: 8px; background: #e0f2fe; border: 1px solid #3b82f6;">
+                        **Breakdown:** - Payment to Hospital(s): **₹{hospital_total:,.0f}**
+                        - MediAudit Commission Fee: **₹{commission_total:,.0f}**
+                    </div>
+                """, unsafe_allow_html=True)
+            
             payment_method = st.radio(
                 "Select Payment Method", 
-                ["💳 Credit/Debit Card", "📱 UPI", "💼 BNPL & EMI Options", "🏦 Net Banking"], 
+                ["💳 Credit/Debit Card", "🏦 Net Banking", "📱 UPI", "💼 EMI Options"], 
                 horizontal=True
             )
             
             if payment_method == "💳 Credit/Debit Card":
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.text_input("Card Number", placeholder="1234 5678 9012 3456")
-                    st.text_input("Cardholder Name", placeholder="John Doe")
+                    card_num = st.text_input("Card Number", placeholder="1234 5678 9012 3456")
+                    card_name = st.text_input("Cardholder Name", placeholder="John Doe")
                 with col2:
                     col_a, col_b = st.columns(2)
                     with col_a:
-                        st.text_input("Expiry (MM/YY)", placeholder="12/25")
+                        expiry = st.text_input("Expiry (MM/YY)", placeholder="12/25")
                     with col_b:
-                        st.text_input("CVV", placeholder="123", type="password")
+                        cvv = st.text_input("CVV", placeholder="123", type="password")
                 st.checkbox("Save card for future payments")
             
             elif payment_method == "🏦 Net Banking":
-                st.selectbox("Select Bank", [ 
-                    "State Bank of India", "HDFC Bank", "ICICI Bank", "Axis Bank", "Kotak Mahindra Bank", "Punjab National Bank"
-                ])
+                bank = st.selectbox("Select Bank", [ "State Bank of India", "HDFC Bank", "ICICI Bank", "Axis Bank", "Kotak Mahindra Bank", "Punjab National Bank" ])
                 st.info("You'll be redirected to your bank's secure payment gateway")
-            
+                
             elif payment_method == "📱 UPI":
                 upi_id = st.text_input("UPI ID", placeholder="yourname@paytm")
                 st.info("📱 You'll receive a payment request on your UPI app")
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Google_Pay_Logo_%282020%29.svg/200px-Google_Pay_Logo_%282020%29.svg.png", width=100)
+                    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Google_Pay_Logo_%282020%29.svg/200px-Google_Pay_Logo_%282020%29.svg.png", caption="Google Pay", width=100)
                 with col2:
-                    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/PhonePe_Logo.svg/200px-PhonePe_Logo.svg.png", width=100)
+                    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/PhonePe_Logo.svg/200px-PhonePe_Logo.svg.png", caption="PhonePe", width=100)
                 with col3:
-                    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Paytm_Logo_%28standalone%29.svg/200px-Paytm_Logo_%28standalone%29.svg.png", width=80)
-            
-            elif payment_method == "💼 BNPL & EMI Options":
-                st.markdown("### 📊 BNPL & EMI Options")
-                st.info("💡 You can convert your medical bill into easy monthly payments or opt for Buy Now Pay Later.")
-                
-                bnpl_provider = st.selectbox("Select BNPL/EMI Provider", ["ZestMoney", "Simpl", "Slice", "Credit Card EMI"])
-                st.markdown("---")
-                
-                st.markdown("### 📈 EMI Calculator")
-                
-                col1, col2 = st.columns(2)
+                    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Paytm_Logo_%28standalone%29.svg/200px-Paytm_Logo_%28standalone%29.svg.png", caption="Paytm", width=80)
+                    
+            elif payment_method == "💼 EMI Options":
+                st.markdown("### 📊 EMI Calculator - Convert Bill to Monthly Payments")
+                st.info("💡 Convert your medical bill into easy monthly installments")
+                col1, col2, col3 = st.columns(3)
                 with col1:
-                    tenure = st.slider("Select Tenure (Months)", 3, 36, 12)
-                
-                # Simple EMI Calculation for mockup
-                principal = total_payment
-                annual_rate = 12.0 # Assuming 12% fictional rate
-                monthly_rate = annual_rate / 12 / 100
-                
-                # EMI formula: P * r * (1 + r)^n / ((1 + r)^n - 1)
-                if monthly_rate == 0:
-                    emi = principal / tenure
-                else:
-                    emi = principal * monthly_rate * ((1 + monthly_rate) ** tenure) / (((1 + monthly_rate) ** tenure) - 1)
-                
+                    tenure = st.selectbox("EMI Tenure (Months)", [3, 6, 9, 12, 18, 24])
                 with col2:
-                    st.metric("Monthly EMI Estimate", f"₹{emi:,.0f}")
+                    interest_rate = st.slider("Annual Interest Rate (%)", 5.0, 15.0, 10.0, 0.5)
                 
-                st.success(f"You will pay **₹{emi:,.0f}** for **{tenure} months**.")
-            # ---------------------------------------------------------------
-
-            if st.button("Confirm and Pay Now", use_container_width=True, type="primary"):
-                # Simulate payment success
+                # Formula: EMI = P * R * (1 + R)^N / ((1 + R)^N - 1) where R is monthly rate
+                monthly_rate = (interest_rate / 100) / 12
+                # Handle zero/small rate edge case, though slider prevents it
+                if monthly_rate == 0:
+                    emi_amount = total_payment / tenure
+                else:
+                    emi_amount = total_payment * monthly_rate * (1 + monthly_rate) ** tenure / (((1 + monthly_rate) ** tenure) - 1)
+                
+                with col3:
+                    st.markdown("---")
+                    st.markdown(f"**Monthly EMI:**")
+                    st.markdown(f"**₹{emi_amount:,.0f}**")
+            
+            st.markdown("---")
+            
+            # Final Pay Now Button (Transaction Gateway)
+            if st.button(f"🔒 Pay Now - ₹{total_payment:,.0f}", use_container_width=True, type="primary"):
+                
+                paid_bills_ids = []
                 for bill in payment_bills:
-                    st.session_state.payment_history.append(bill)
-                    # Remove paid bills from queue
-                    if bill in st.session_state.bill_queue:
-                        st.session_state.bill_queue.remove(bill)
+                    
+                    final_amount_paid = bill.get('total_to_pay', bill['total_billed'])
+                    
+                    # Add to history
+                    bill_history = {
+                        'patient_name': bill['patient_name'],
+                        'hospital': bill['hospital'],
+                        'original_amount': bill['total_billed'],
+                        'final_amount_paid': final_amount_paid,
+                        'date_paid': datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        'savings': bill.get('potential_savings', 0),
+                        'commission_paid': bill.get('commission_fee', 0),
+                        'status': 'Paid'
+                    }
+                    st.session_state.payment_history.append(bill_history)
+                    paid_bills_ids.append(bill.get('negotiation_id', bill['total_billed'])) # Use a unique ID/value
 
+                
+                # Remove paid bills from queue
+                # Filter out bills whose ID/unique value is in paid_bills_ids
+                st.session_state.bill_queue = [
+                    b for b in st.session_state.bill_queue 
+                    if b.get('negotiation_id', b['total_billed']) not in paid_bills_ids
+                ]
+
+                # Clear payment state
                 st.session_state.show_payment = False
                 st.session_state.payment_bills = []
-                st.success("🎉 Payment successful! Transaction receipt sent to email.")
+                st.session_state.payment_type = None
+
                 st.balloons()
-                time.sleep(1)
+                st.success(f"✅ Payment of ₹{total_payment:,.0f} Successful! Thank you.")
                 st.rerun()
 
+    # ======================================================================
+    # TAB 2: Negotiation Requests (Completed Negotiation Flow)
+    # ======================================================================
     with tabs[2]:
-        st.markdown("### 🤝 Negotiation Requests")
-        if not st.session_state.negotiation_requests:
-            st.info("No active negotiation requests. Audit a bill and click 'Yes, Negotiate For Me!' to start the process.")
+        st.markdown("### 🤝 Negotiation Requests Status")
+        st.info("Our experts are working to reduce your bill! Use the button below to simulate the resolution of a negotiation request.")
+        
+        pending_requests = [r for r in st.session_state.negotiation_requests if r['status'] == 'Pending']
+        
+        if pending_requests:
+            st.markdown("#### ⏳ Pending Negotiations")
+            for idx, req in enumerate(pending_requests):
+                with st.container(border=True):
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.write(f"**Request ID:** {req['id']}")
+                        st.write(f"**Patient:** {req['patient_name']} @ {req['hospital']}")
+                        st.write(f"**Original Savings Target:** ₹{req['potential_savings']:,.0f}")
+                    with col2:
+                        st.markdown("##### Status: **Pending**")
+                        
+                    st.markdown("---")
+                    
+                    # Admin Action: Simulate resolution of negotiation.
+                    if st.button(f"Simulate Successful Negotiation & Final Offer #{idx+1}", key=f"resolve_neg_{idx}", use_container_width=True, type="primary"):
+                        
+                        # 1. Determine Actual Savings (e.g., 85% to 95% of potential, capped by original savings)
+                        simulated_success_rate = random.uniform(0.85, 0.95)
+                        actual_savings = req['potential_savings'] * simulated_success_rate
+                        actual_savings = min(actual_savings, req['potential_savings']) # Ensure savings doesn't exceed potential
+                        
+                        # 2. Calculate Final Amounts (Commission is 15% of ACTUAL savings)
+                        original_bill = req['audit_data']['total_billed']
+                        hospital_payment = original_bill - actual_savings
+                        commission_fee = actual_savings * 0.15 # 15% of actual savings
+                        total_to_pay = hospital_payment + commission_fee
+                        
+                        # 3. Update Request Object Status & Amounts
+                        req['status'] = 'Negotiated'
+                        req['actual_savings'] = actual_savings
+                        req['final_hospital_amount'] = hospital_payment
+                        req['final_commission'] = commission_fee
+                        req['total_to_pay'] = total_to_pay
+                        
+                        st.success(f"✅ Negotiation for {req['patient_name']} resolved with **₹{actual_savings:,.0f}** in savings!")
+                        st.warning(f"Final Offer: Total Payment Due **₹{total_to_pay:,.0f}** (Hospital: ₹{hospital_payment:,.0f} + Commission: ₹{commission_fee:,.0f})")
+                        st.info("The negotiated bill is now in your 'Bill Queue & Payment' tab for final payment.")
+                        st.rerun()
         else:
-            for req in st.session_state.negotiation_requests:
-                with st.expander(f"Request {req['id']} - {req['hospital']} ({req['status']})"):
-                    st.write(f"**Patient:** {req['patient_name']}")
-                    st.write(f"**Date Submitted:** {req['date']}")
-                    st.write(f"**Hospital:** {req['hospital']}")
-                    st.write(f"**Potential Savings:** ₹{req['potential_savings']:,.0f}")
-                    st.write(f"**Our Commission (15%):** ₹{req['commission']:,.0f}")
-                    
-                    if req['status'] == 'Pending':
-                        # The new message is reflected here as well
-                        st.warning("Status: Pending. Our team is negotiating with the hospital. **Expected completion: 12 to 48 hours.** You will be notified with the final savings.")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("Cancel Request", key=f"cancel_{req['id']}", use_container_width=True):
-                                req['status'] = 'Cancelled'
-                                st.success("Request cancelled.")
-                                st.rerun()
-                        with col2:
-                            if st.button("Simulate Negotiation Complete (Demo)", key=f"simulate_{req['id']}", use_container_width=True):
-                                req['status'] = 'Complete'
-                                req['actual_savings'] = req['potential_savings'] * 0.85 # Simulate 85% success
-                                req['final_bill'] = req['audit_data']['total_billed'] - req['actual_savings']
-                                st.rerun()
-                    
-                    elif req['status'] == 'Complete':
-                        st.success(f"🎉 Negotiation **Complete**! You saved **₹{req['actual_savings']:,.0f}**!")
-                        st.markdown(f"""
-                            <div style='border: 2px solid #10b981; padding: 1rem; border-radius: 8px; margin-top: 1rem;'>
-                                <h4>New Reduced Bill Amount:</h4>
-                                <p style='font-size: 1.5rem; font-weight: 700; color: #059669;'>₹{req['final_bill']:,.0f}</p>
-                                <p>Original Bill: <span class='strikethrough-price'>₹{req['audit_data']['total_billed']:,.0f}</span></p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                        if st.button("Pay Reduced Bill Now", key=f"pay_negotiated_{req['id']}", type="primary"):
-                            # Create a new audit item for the reduced bill
-                            reduced_audit = req['audit_data'].copy()
-                            reduced_audit['total_billed'] = req['final_bill']
-                            reduced_audit['potential_savings'] = 0 # Savings achieved and factored in
-                            reduced_audit['negotiation_fee'] = req['actual_savings'] * 0.15
-                            st.session_state.payment_bills = [reduced_audit]
-                            st.session_state.show_payment = True
-                            st.rerun()
-                    
-                    elif req['status'] == 'Cancelled':
-                        st.error("Request was cancelled by the user.")
+            st.success("🎉 No pending negotiation requests at this time.")
 
+        st.markdown("---")
+        
+        # Display Negotiation History (Resolved/Paid requests from negotiation_requests)
+        st.markdown("#### ✅ Negotiation History (Completed/Paid)")
+        st.info("Bills that have been successfully paid after negotiation are now in the 'History' tab.")
+
+
+    # ======================================================================
+    # TAB 3: History (Ensuring it works with new data structure)
+    # ======================================================================
     with tabs[3]:
         st.markdown("### 📋 Payment & Audit History")
+        
         if not st.session_state.payment_history:
-            st.info("No completed payments yet. Paid bills will appear here.")
+            st.info("No completed payments found.")
         else:
-            for idx, hist in enumerate(st.session_state.payment_history):
-                with st.expander(f"Paid Bill #{idx+1}: {hist['patient_name']} - ₹{hist['total_billed']:,.0f}"):
-                    st.write(f"**Date Paid:** {datetime.now().strftime('%Y-%m-%d')}")
-                    st.write(f"**Hospital:** {hist['hospital']}")
-                    st.write(f"**Original Audit Savings:** ₹{hist['potential_savings']:,.0f}")
-                    st.write("---")
-                    st.dataframe(hist['results_df'], use_container_width=True)
+            for idx, item in enumerate(reversed(st.session_state.payment_history)):
+                with st.container(border=True):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.write(f"**Date Paid:** {item['date_paid']}")
+                        st.write(f"**Patient:** {item['patient_name']}")
+                    with col2:
+                        st.write(f"**Hospital:** {item['hospital']}")
+                        st.write(f"**Original Bill:** ₹{item['original_amount']:,.0f}")
+                    with col3:
+                        st.write(f"**Final Paid:** **₹{item['final_amount_paid']:,.0f}**")
+                        st.write(f"**Net Savings:** ₹{item['savings'] - item['commission_paid']:,.0f}")
+                    
+                    if item['commission_paid'] > 0:
+                        st.caption(f"Savings Achieved: ₹{item['savings']:,.0f} | Negotiation Fee Paid: ₹{item['commission_paid']:,.0f}")
 
-
-elif user_type == "🏢 B2B Enterprise":
-    st.markdown("""
-        <div class="hero-banner">
-            <h1>🏢 B2B Enterprise Solutions</h1>
-            <p>Advanced bulk auditing, API access, and custom analytics for insurance providers and TPAs.</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("### Key Features")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-            <div class="info-card">
-                <h4>☁️ Scalable API Access</h4>
-                <p>Integrate our auditing engine directly into your claims processing system. Handle thousands of bills per hour.</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("""
-            <div class="info-card">
-                <h4>📈 Advanced Anaytics Dashboard</h4>
-                <p>Track fraud patterns, identify high-cost hospitals, and monitor claim savings across your entire portfolio.</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
+    # ======================================================================
+    # Footer
+    # ======================================================================
     st.markdown("---")
-    st.markdown("### Contact Us for a Demo")
     
-    with st.form("b2b_form"):
-        name = st.text_input("Your Name")
-        company = st.text_input("Company Name")
-        email_b2b = st.text_input("Work Email")
-        interest = st.selectbox("Area of Interest", ["Insurance Claims Audit", "TPA Services", "Custom Integration"])
+    # Placeholder for other tabs content (B2B and About - included for completeness)
+    if user_type == "🏢 B2B Enterprise":
+        st.markdown("### 🏢 B2B Enterprise Solutions")
+        st.markdown("Custom API integration for insurance and large healthcare providers.")
+        st.markdown("Contact us for a tailored quote.")
         
-        submitted = st.form_submit_button("Request Enterprise Demo")
-        if submitted:
-            st.success(f"Thank you, {name}! Your request for a demo for {company} has been submitted. We will contact you at {email_b2b} shortly.")
+    elif user_type == "ℹ️ About & Pricing":
+        st.markdown("### ℹ️ About MediAudit Pro")
+        st.markdown("MediAudit Pro is an AI-powered service dedicated to detecting overcharges in medical bills, ensuring fairness and transparency.")
+        
+        st.markdown("#### Pricing Structure")
+        st.markdown("""
+            * **Initial Bill Audit:** **FREE** for all patients.
+            * **Expert Negotiation Service:** **15% commission** on the **actual savings achieved**. No savings, no fee.
+        """)
+        
+        st.markdown("#### FAQs")
+        with st.expander("❓ How long does an audit take?"):
+            st.write("An initial audit is instant (less than 5 seconds). Negotiation can take 7-14 business days depending on the hospital's billing cycle and complexity.")
+        
+        with st.expander("📱 Do you have a mobile app?"):
+            st.write("Not yet, but our Streamlit app is fully responsive and our WhatsApp chatbot is available 24/7 for quick queries and assistance.")
+        
+        with st.expander("🏢 What do enterprises pay for?"):
+            st.write("Enterprises pay for bulk processing, API access, custom integrations, and advanced analytics. Individual patient audits remain free for everyone.")
+        
+        with st.expander("🔒 Is my medical data secure?"):
+            st.write("Yes. We use bank-grade encryption and comply with all healthcare data protection regulations (HIPAA equivalent). Your data is never shared without consent.")
+        
+        with st.expander("🎭 What is demo mode?"):
+            st.write("Demo mode lets you try our audit system with sample data without uploading real bills. Perfect for understanding how the system works before using it with actual bills.")
 
-
-elif user_type == "ℹ️ About & Pricing":
-    st.markdown("""
-        <div class="hero-banner">
-            <h1>ℹ️ About & Pricing</h1>
-            <p>Transparency in medical billing for a healthier financial future.</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("### Our Mission")
-    st.info("To use AI to democratize healthcare auditing, ensuring every patient pays a fair price and is protected from overbilling and fraud.")
-    
-    col1, col2 = st.columns(2)
+    # Footer
+    st.markdown("---")
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown("### Pricing for Patients")
-        st.markdown("""
-            <div class="info-card" style="border-left-color: #10b981;">
-                <h4>✅ Bill Audit</h4>
-                <div class="free-badge">FREE FOREVER</div>
-                <p>✓ AI-powered itemized bill analysis</p>
-                <p>✓ Overcharge detection & CGHS rate comparison</p>
-                <p>✓ Detailed audit report download</p>
-                <p>No charge, no hidden fees.</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
+        st.markdown("**MediAudit Pro**")
+        st.markdown("AI-powered medical auditing")
+        st.markdown("*Free for patients*")
+    
     with col2:
-        st.markdown("### Pricing for Negotiation")
-        st.markdown("""
-            <div class="negotiation-card">
-                <h4>🤝 Expert Negotiation Service</h4>
-                <h3 style="color: #92400e;">15% Commission</h3>
-                <p>Only pay based on success. Our fee is 15% of the **actual amount we save** you on the final bill.</p>
-                <p>Example: Original Bill: ₹50,000. We reduce it to ₹40,000. Savings: ₹10,000. Your fee: 15% of ₹10,000 = ₹1,500.</p>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown("**Services**")
+        st.markdown("• Free Bill Audit")
+        st.markdown("• Expert Negotiation")
+        st.markdown("• EMI Options")
     
-    st.markdown("---")
-    st.markdown("### FAQs")
+    with col3:
+        st.markdown("**Quick Links**")
+        st.markdown("• About Us")
+        st.markdown("• Privacy Policy")
+        st.markdown("• Terms of Service")
     
-    with st.expander("⏱️ How long does the audit take?"):
-        st.write("The initial AI audit is instant (under 5 seconds) after extracting your bill data.")
-        
-    with st.expander("🤝 How long does the negotiation take?"):
-        # The new message is also reflected here for consistency
-        st.write("Negotiation is an expert-led manual process. It typically takes **12 to 48 hours** as we communicate directly with the hospital's billing department. We notify you immediately once a final reduced amount is agreed upon.")
-        
-    with st.expander("📞 How do I contact support?"):
-        st.write("You can contact us via the floating WhatsApp chat button or email us at support@mediaudit.com. Our support team. Available 24/7 for quick queries and assistance.")
-        
-    with st.expander("🏢 What do enterprises pay for?"):
-        st.write("Enterprises pay for bulk processing, API access, custom integrations, and advanced analytics. Individual patient audits remain free for everyone.")
-    
-    with st.expander("🔒 Is my medical data secure?"):
-        st.write("Yes. We use bank-grade encryption and comply with all healthcare data protection regulations (HIPAA equivalent). Your data is never shared without consent.")
-    
-    with st.expander("🎭 What is demo mode?"):
-        st.write("Demo mode lets you try our audit system with sample data without uploading real bills. Perfect for understanding how the system works before using it with actual bills.")
-
-# Footer
-st.markdown("---")
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.markdown("**MediAudit Pro**")
-    st.markdown("AI-powered medical auditing")
-    st.markdown("*Free for patients*")
-
-with col2:
-    st.markdown("**Services**")
-    st.markdown("• Free Bill Audit")
-    st.markdown("• Expert Negotiation")
-    st.markdown("• EMI Options")
-
-with col3:
-    st.markdown("**Quick Links**")
-    st.markdown("• About Us")
-    st.markdown("• Privacy Policy")
-    st.markdown("• Terms of Service")
-
-with col4:
-    st.markdown("**Contact**")
-    st.markdown("• Email: support@mediaudit.com")
-    st.markdown("• Phone: +91 98765 43210")
+    with col4:
+        st.markdown("**Contact**")
+        st.markdown("• support@mediaudit.com")
+        st.markdown("• +91-9876543210")
